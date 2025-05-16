@@ -47,19 +47,22 @@ export default function HistoryPage() {
       <Header />
 
       <main className="flex-1 container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center">
-            <Button variant="ghost" size="sm" onClick={handleBack} className="mr-2">
+        <div className="flex flex-col mb-6">
+          <div className="mb-4">
+            <Button variant="ghost" size="sm" onClick={handleBack} className="flex items-center">
               <ChevronLeft className="h-4 w-4 mr-1" /> Back
             </Button>
-            <h1 className="text-2xl font-bold">Analysis History</h1>
           </div>
 
-          {history.length > 0 && (
-            <Button variant="outline" size="sm" onClick={clearHistory} className="text-red-500">
-              <Trash2 className="h-4 w-4 mr-1" /> Clear History
-            </Button>
-          )}
+          <div className="flex justify-between items-center">
+            <h1 className="text-2xl font-bold">Analysis History</h1>
+
+            {history.length > 0 && (
+              <Button variant="outline" size="sm" onClick={clearHistory} className="text-red-500">
+                <Trash2 className="h-4 w-4 mr-1" /> Clear History
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Search bar */}
