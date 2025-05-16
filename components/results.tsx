@@ -148,6 +148,140 @@ export function Results({ image, isAnalyzing, results, onReset }: ResultsProps) 
     document.body.style.overflow = ""
   }
 
+  // Handle image download with defect markers
+  const handleSaveImage = () => {
+    if (!image || !results?.segments) return
+
+    // Create a canvas element to draw the image and defect markers
+    const canvas = document.createElement("canvas")
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    // Create a new image object to load the source image
+    const img = new Image()
+    img.crossOrigin = "anonymous" // Avoid CORS issues
+
+    img.onload = () => {
+      // Constants for padding and label height
+      const PADDING = 20
+      const LABEL_HEIGHT = 25
+      const LABEL_PADDING = 5
+      const FONT_SIZE = 14
+
+      // Calculate scaling factors
+      const scaleX = img.width / imageRef.current?.naturalWidth!
+      const scaleY = img.height / imageRef.current?.naturalHeight!
+
+      // Calculate the extra space needed at the top, right, bottom, and left
+      let topExtension = PADDING
+      let rightExtension = PADDING
+      const bottomExtension = PADDING
+      let leftExtension = PADDING
+
+      // Check each segment to see if its label extends beyond the image boundaries
+      results.segments.forEach((segment: any) => {
+        const x = segment.x * scaleX
+        const y = segment.y * scaleY
+
+        // Set font to measure text width
+        ctx.font = `bold ${FONT_SIZE}px Arial`
+        const labelText = `${segment.label} (${(segment.confidence * 100).toFixed(0)}%)`
+        const labelWidth = ctx.measureText(labelText).width + LABEL_PADDING * 2
+
+        // Check if label extends beyond top
+        const labelTop = y - LABEL_HEIGHT
+        if (labelTop < topExtension) {
+          topExtension = Math.max(PADDING, Math.abs(labelTop) + PADDING)
+        }
+
+        // Check if label extends beyond left
+        if (x < leftExtension) {
+          leftExtension = Math.max(PADDING, Math.abs(x) + PADDING)
+        }
+
+        // Check if label extends beyond right
+        if (x + labelWidth > img.width + rightExtension) {
+          rightExtension = Math.max(PADDING, x + labelWidth - img.width + PADDING)
+        }
+      })
+
+      // Set canvas dimensions with extensions
+      canvas.width = img.width + leftExtension + rightExtension
+      canvas.height = img.height + topExtension + bottomExtension
+
+      // Fill the canvas with white background
+      ctx.fillStyle = "white"
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      // Draw the original image with offset to account for extensions
+      ctx.drawImage(img, leftExtension, topExtension, img.width, img.height)
+
+      // Draw border around the original image area
+      ctx.strokeStyle = "#e2e8f0" // Light gray border
+      ctx.lineWidth = 1
+      ctx.strokeRect(leftExtension, topExtension, img.width, img.height)
+
+      // Draw the defect markers
+      ctx.strokeStyle = "red"
+      ctx.fillStyle = "rgba(255, 0, 0, 0.2)"
+      ctx.lineWidth = 2
+
+      // Draw each defect marker
+      results.segments.forEach((segment: any) => {
+        const x = segment.x * scaleX + leftExtension
+        const y = segment.y * scaleY + topExtension
+        const width = segment.width * scaleX
+        const height = segment.height * scaleY
+
+        // Draw rectangle
+        ctx.beginPath()
+        ctx.rect(x, y, width, height)
+        ctx.fill()
+        ctx.stroke()
+
+        // Prepare for drawing label
+        const labelText = `${segment.label} (${(segment.confidence * 100).toFixed(0)}%)`
+        ctx.font = `bold ${FONT_SIZE}px Arial`
+        const textMetrics = ctx.measureText(labelText)
+        const labelWidth = textMetrics.width + LABEL_PADDING * 2
+
+        // Calculate text baseline for better vertical alignment
+        // The actual height of the text is approximately 70% of FONT_SIZE
+        const textHeight = FONT_SIZE * 0.7
+        const verticalOffset = (LABEL_HEIGHT - textHeight) / 2
+
+        // Draw label background with proper dimensions
+        ctx.fillStyle = "red"
+        ctx.beginPath()
+        ctx.rect(x, y - LABEL_HEIGHT, labelWidth, LABEL_HEIGHT)
+        ctx.fill()
+
+        // Draw label text with proper vertical alignment
+        ctx.fillStyle = "white"
+        ctx.fillText(labelText, x + LABEL_PADDING, y - LABEL_HEIGHT + LABEL_HEIGHT / 2 + textHeight / 2)
+
+        // Reset fill style for next rectangle
+        ctx.fillStyle = "rgba(255, 0, 0, 0.2)"
+      })
+
+      // Convert canvas to data URL
+      const dataUrl = canvas.toDataURL("image/png")
+
+      // Create download link
+      const link = document.createElement("a")
+      link.href = dataUrl
+      link.download = "steel-pipe-analysis-with-defects.png"
+
+      // Trigger download
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    }
+
+    // Set the source of the image
+    img.src = image
+  }
+
   // Add event listeners for mouse up outside the component
   useEffect(() => {
     const handleGlobalMouseUp = () => {
@@ -179,7 +313,7 @@ export function Results({ image, isAnalyzing, results, onReset }: ResultsProps) 
                 <ZoomOut className="h-4 w-4" />
               </Button>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleSaveImage}>
               <Download className="h-4 w-4 mr-2" /> Save
             </Button>
           </div>
