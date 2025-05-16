@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Upload } from "@/components/upload"
 import { Results } from "@/components/results"
 import { AnimatedBackground } from "@/components/animated-background"
+import { Header } from "@/components/header"
 import { motion } from "framer-motion"
 
 export default function Home() {
@@ -35,28 +36,32 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 relative overflow-hidden">
-      <AnimatedBackground />
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <Header />
 
-      <div className="container mx-auto px-4 py-12 relative z-10">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="text-center mb-12"
-        >
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">Steel Pipe Defects Analysis</h1>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Upload X-Ray images to detect and classify defects in steel pipes
-          </p>
-        </motion.div>
+      <main className="flex-1 relative overflow-hidden">
+        <AnimatedBackground />
 
-        {!image ? (
-          <Upload onImageUpload={handleImageUpload} />
-        ) : (
-          <Results image={image} isAnalyzing={isAnalyzing} results={results} onReset={resetAnalysis} />
-        )}
-      </div>
-    </main>
+        <div className="container mx-auto px-4 py-12 relative z-10">
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="text-center mb-12"
+          >
+            <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">Steel Pipe Defects Analysis</h1>
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+              Upload X-Ray images to detect and classify defects in steel pipes
+            </p>
+          </motion.div>
+
+          {!image ? (
+            <Upload onImageUpload={handleImageUpload} />
+          ) : (
+            <Results image={image} isAnalyzing={isAnalyzing} results={results} onReset={resetAnalysis} />
+          )}
+        </div>
+      </main>
+    </div>
   )
 }

@@ -49,11 +49,11 @@ export function Upload({ onImageUpload }: UploadProps) {
       <div
         {...getRootProps()}
         className={`
-          border-2 border-dashed rounded-xl p-12 
-          transition-all duration-300 ease-in-out
-          bg-white shadow-sm hover:shadow-md
-          ${isDragActive ? "border-blue-500 bg-blue-50" : "border-gray-300"}
-        `}
+        border-2 border-dashed rounded-xl p-12 
+        transition-all duration-300 ease-in-out
+        bg-white shadow-sm hover:shadow-md
+        ${isDragActive ? "border-blue-500 bg-blue-50" : "border-gray-300"}
+      `}
         onDragEnter={() => setIsDragging(true)}
         onDragLeave={() => setIsDragging(false)}
         onDrop={() => setIsDragging(false)}
