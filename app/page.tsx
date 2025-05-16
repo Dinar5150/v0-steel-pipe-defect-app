@@ -74,15 +74,15 @@ export default function Home() {
         <AnimatedBackground />
 
         <div className="container mx-auto px-4 py-12 relative z-10">
-          <div className="flex justify-between items-center mb-8">
+          <div className="flex flex-col items-center justify-between mb-8">
             <motion.div
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="text-left"
+              className="text-center mb-6"
             >
               <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">Steel Pipe Defects Analysis</h1>
-              <p className="text-xl text-gray-600 max-w-2xl">
+              <p className="text-xl text-gray-600 max-w-2xl mx-auto">
                 Upload X-Ray images to detect and classify defects in steel pipes
               </p>
             </motion.div>
