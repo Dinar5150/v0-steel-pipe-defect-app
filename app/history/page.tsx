@@ -9,11 +9,13 @@ import { Input } from "@/components/ui/input"
 import { useHistory, type AnalysisHistoryItem } from "@/context/history-context"
 import { Header } from "@/components/header"
 import { ProtectedRoute } from "@/components/protected-route"
+import { useLanguage } from "@/context/language-context"
 
 export default function HistoryPage() {
   const router = useRouter()
   const { history, clearHistory, deleteHistoryItem } = useHistory()
   const [searchTerm, setSearchTerm] = useState("")
+  const { t } = useLanguage()
 
   // Format date for display
   const formatDate = (timestamp: number) => {
@@ -50,18 +52,18 @@ export default function HistoryPage() {
 
         <main className="flex-1 container mx-auto px-4 py-8">
           <div className="flex flex-col mb-6">
-            <div className="mb-4">
+            <div className="mt-10">
               <Button variant="ghost" size="sm" onClick={handleBack} className="flex items-center">
-                <ChevronLeft className="h-4 w-4 mr-1" /> Back
+                <ChevronLeft className="h-4 w-4 mr-1" /> {t("back")}
               </Button>
             </div>
 
             <div className="flex justify-between items-center">
-              <h1 className="text-2xl font-bold">Analysis History</h1>
+              <h1 className="text-2xl font-bold">{t("history.title")}</h1>
 
               {history.length > 0 && (
                 <Button variant="outline" size="sm" onClick={clearHistory} className="text-red-500">
-                  <Trash2 className="h-4 w-4 mr-1" /> Clear History
+                  <Trash2 className="h-4 w-4 mr-1" /> {t("history.clear")}
                 </Button>
               )}
             </div>
@@ -73,7 +75,7 @@ export default function HistoryPage() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 type="text"
-                placeholder="Search by defect type..."
+                placeholder={t("history.search.placeholder")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 pr-10"
@@ -91,16 +93,16 @@ export default function HistoryPage() {
 
           {history.length === 0 ? (
             <div className="text-center py-12 bg-white rounded-xl shadow-sm">
-              <p className="text-gray-500">No analysis history available.</p>
+              <p className="text-gray-500">{t("history.no")}</p>
               <Button variant="outline" onClick={handleBack} className="mt-4">
-                Go to Analysis
+                {t("history.go.to.analysis")}
               </Button>
             </div>
           ) : filteredHistory.length === 0 ? (
             <div className="text-center py-12 bg-white rounded-xl shadow-sm">
-              <p className="text-gray-500">No results matching your search.</p>
+              <p className="text-gray-500">{t("history.no.search")}</p>
               <Button variant="outline" onClick={() => setSearchTerm("")} className="mt-4">
-                Clear Search
+                {t("history.clear.search")}
               </Button>
             </div>
           ) : (
@@ -127,13 +129,13 @@ export default function HistoryPage() {
                       {formatDate(item.timestamp)}
                       {item.isEdited && (
                         <span className="ml-2 px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded">
-                          Edited
+                          {t("history.edited")}
                         </span>
                       )}
                     </div>
 
                     <div className="mb-4">
-                      <h3 className="text-sm font-medium mb-2">Detected Defects:</h3>
+                      <h3 className="text-sm font-medium mb-2">{t("detected.defects")}</h3>
                       <div className="flex flex-wrap gap-2">
                         {item.results?.segments?.map((segment: any) => (
                           <span key={segment.id} className="text-xs bg-gray-100 px-2 py-1 rounded-full">
@@ -145,7 +147,7 @@ export default function HistoryPage() {
 
                     <div className="flex justify-between">
                       <Button variant="outline" size="sm" onClick={() => handleViewAnalysis(item)}>
-                        View Details
+                        {t("history.view.details")}
                       </Button>
                       <Button
                         variant="ghost"

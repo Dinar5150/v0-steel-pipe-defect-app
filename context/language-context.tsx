@@ -28,6 +28,16 @@ type TranslationKeys =
   | "login.password"
   | "login.button"
   | "login.error"
+  | "history.title"
+  | "history.clear"
+  | "history.no"
+  | "history.no.search"
+  | "history.go.to.analysis"
+  | "history.clear.search"
+  | "history.view.details"
+  | "history.edited"
+  | "history.search.placeholder"
+  | "back"
 
 type Translations = {
   [key in Language]: {
@@ -65,7 +75,17 @@ const translations: Translations = {
     "login.username": "Username",
     "login.password": "Password",
     "login.button": "Sign In",
-    "login.error": "Invalid username or password"
+    "login.error": "Invalid username or password",
+    "history.title": "Analysis History",
+    "history.clear": "Clear History",
+    "history.no": "No analysis history available.",
+    "history.no.search": "No results matching your search.",
+    "history.go.to.analysis": "Go to Analysis",
+    "history.clear.search": "Clear Search",
+    "history.view.details": "View Details",
+    "history.edited": "Edited",
+    "history.search.placeholder": "Search by defect type...",
+    "back": "Back"
   },
   ru: {
     "analyze.another": "Проанализировать другое изображение",
@@ -90,7 +110,17 @@ const translations: Translations = {
     "login.username": "Имя пользователя",
     "login.password": "Пароль",
     "login.button": "Войти",
-    "login.error": "Неверное имя пользователя или пароль"
+    "login.error": "Неверное имя пользователя или пароль",
+    "history.title": "История анализов",
+    "history.clear": "Очистить историю",
+    "history.no": "История анализов отсутствует.",
+    "history.no.search": "Нет результатов по вашему запросу.",
+    "history.go.to.analysis": "К анализу",
+    "history.clear.search": "Сбросить поиск",
+    "history.view.details": "Подробнее",
+    "history.edited": "Изменено",
+    "history.search.placeholder": "Поиск по типу дефекта...",
+    "back": "Назад"
   }
 }
 
