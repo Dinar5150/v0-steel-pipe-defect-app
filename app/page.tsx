@@ -40,6 +40,15 @@ export default function Home() {
     }
   }, [])
 
+  // Remove the debug button from the UI
+  // Add a console command to toggle debug panel
+  useEffect(() => {
+    (window as any).toggleDebugPanel = () => setShowDebug((prev) => !prev);
+    return () => {
+      delete (window as any).toggleDebugPanel;
+    };
+  }, []);
+
   const handleImageUpload = (imageUrl: string) => {
     setImage(imageUrl)
     setIsAnalyzing(true)
@@ -64,10 +73,6 @@ export default function Home() {
 
   const navigateToHistory = () => {
     router.push("/history")
-  }
-
-  const toggleDebug = () => {
-    setShowDebug(!showDebug)
   }
 
   const toggleEditMode = () => {
@@ -115,15 +120,6 @@ export default function Home() {
                 <Button variant="outline" onClick={navigateToHistory} className="flex items-center">
                   <History className="mr-2 h-4 w-4" />
                   {t("view.history")}
-                </Button>
-
-                <Button
-                  variant="outline"
-                  onClick={toggleDebug}
-                  className={`flex items-center ${showDebug ? "bg-amber-100" : ""}`}
-                >
-                  <Bug className="mr-2 h-4 w-4" />
-                  {t("show.debug")}
                 </Button>
               </div>
             </div>
