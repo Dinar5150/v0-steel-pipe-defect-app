@@ -4,9 +4,10 @@ import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
 import { motion } from "framer-motion"
-import { RefreshCw, ZoomIn, ZoomOut, Download, Edit, Check, Trash2, Plus, Undo, Redo } from "lucide-react"
+import { RefreshCw, ZoomIn, ZoomOut, Download, Edit, Check, Trash2, Plus, Undo, Redo, Globe } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useLanguage } from "@/context/language-context"
 
 // Updated Segment interface to use x0, y0, x1, y1 coordinates
 interface Segment {
@@ -69,6 +70,8 @@ export function Results({
   const imageRef = useRef<HTMLImageElement>(null)
   const imageWrapperRef = useRef<HTMLDivElement>(null)
   const segmentsContainerRef = useRef<HTMLDivElement>(null)
+
+  const { t, toggleLanguage, language } = useLanguage()
 
   // Convert legacy segments (if any) to the new format
   useEffect(() => {
@@ -578,7 +581,7 @@ export function Results({
       y0: imageDimensions.height * 0.3,
       x1: imageDimensions.width * 0.5,
       y1: imageDimensions.height * 0.4,
-      label: "New Defect"
+      label: t("new.defect")
     }
 
     const newSegments = [...results.segments, newSegment]
@@ -809,7 +812,7 @@ export function Results({
         {/* Image display area */}
         <div className="md:col-span-2 bg-white rounded-xl shadow-sm p-4 relative">
           <div className="flex justify-between mb-4">
-            <div className="flex space-x-2">
+            <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" onClick={handleZoomIn}>
                 <ZoomIn className="h-4 w-4" />
               </Button>
@@ -825,7 +828,7 @@ export function Results({
                   className={isEditMode ? "bg-blue-100" : ""}
                 >
                   {isEditMode ? <Check className="h-4 w-4 mr-1" /> : <Edit className="h-4 w-4 mr-1" />}
-                  {isEditMode ? "Done" : "Edit"}
+                  {isEditMode ? t("done") : t("edit")}
                 </Button>
               )}
 
@@ -844,19 +847,19 @@ export function Results({
                   </Button>
 
                   <Button variant="outline" size="sm" onClick={handleAddSegment}>
-                    <Plus className="h-4 w-4 mr-1" /> Add
+                    <Plus className="h-4 w-4 mr-1" /> {t("add")}
                   </Button>
 
                   {selectedSegment !== null && (
                     <Button variant="outline" size="sm" onClick={handleDeleteSegment} className="text-red-500">
-                      <Trash2 className="h-4 w-4 mr-1" /> Delete
+                      <Trash2 className="h-4 w-4 mr-1" /> {t("delete")}
                     </Button>
                   )}
                 </>
               )}
             </div>
             <Button variant="outline" size="sm" onClick={handleSaveImage}>
-              <Download className="h-4 w-4 mr-2" /> Save
+              <Download className="h-4 w-4 mr-2" /> {t("save")}
             </Button>
           </div>
 
@@ -1013,13 +1016,13 @@ export function Results({
 
         {/* Analysis results area */}
         <div className="bg-white rounded-xl shadow-sm p-6">
-          <h3 className="text-lg font-semibold mb-4">Analysis Results</h3>
+          <h3 className="text-lg font-semibold mb-4">{t("analysis.results")}</h3>
 
           {isAnalyzing ? (
             <div className="space-y-4">
               <div className="flex items-center">
                 <RefreshCw className="animate-spin mr-2 h-4 w-4 text-blue-500" />
-                <span>Analyzing image...</span>
+                <span>{t("analyzing")}</span>
               </div>
               <Skeleton className="h-4 w-3/4" />
               <Skeleton className="h-4 w-1/2" />
@@ -1028,7 +1031,7 @@ export function Results({
           ) : results ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
               <div>
-                <p className="text-sm text-gray-500 mb-2">Detected Defects</p>
+                <p className="text-sm text-gray-500 mb-2">{t("detected.defects")}</p>
                 <ul className="space-y-3">
                   {results.segments.map((segment: Segment) => (
                     <motion.li
@@ -1049,13 +1052,13 @@ export function Results({
               </div>
 
               <div className="mt-8">
-                <Button onClick={onReset} variant="outline" className="w-full">
-                  Analyze Another Image
+                <Button onClick={onReset} variant="outline" className="w-full text-sm whitespace-normal py-2">
+                  {t("analyze.another")}
                 </Button>
               </div>
             </motion.div>
           ) : (
-            <p className="text-gray-500">No results available</p>
+            <p className="text-gray-500">{t("no.results")}</p>
           )}
         </div>
       </div>

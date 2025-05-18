@@ -10,11 +10,13 @@ import { DebugPanel } from "@/components/debug-panel"
 import { ProtectedRoute } from "@/components/protected-route"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { HistoryIcon, ArrowRight, Bug } from "lucide-react"
+import { History, Bug } from "lucide-react"
+import { useLanguage } from "@/context/language-context"
 import { useHistory } from "@/context/history-context"
 
 export default function Home() {
   const router = useRouter()
+  const { t } = useLanguage()
   const { addToHistory, updateHistoryItem } = useHistory()
   const [image, setImage] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -46,16 +48,10 @@ export default function Home() {
     setTimeout(() => {
       setIsAnalyzing(false)
       const analysisResults = {
-        classification: "Longitudinal Crack",
-        segments: [
-          { id: 1, x0: 120, y0: 80, x1: 220, y1: 110, label: "Crack" },
-          { id: 2, x0: 250, y0: 150, x1: 320, y1: 175, label: "Porosity" },
-        ],
+        segments: []
       }
 
       setResults(analysisResults)
-
-      // Add to history
       addToHistory(imageUrl, analysisResults)
     }, 2000)
   }
@@ -98,7 +94,7 @@ export default function Home() {
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <Header />
 
-        <main className="flex-1 relative overflow-hidden">
+        <main className="flex-1 relative overflow-hidden pt-14">
           <AnimatedBackground />
 
           <div className="container mx-auto px-4 py-12 relative z-10">
@@ -109,17 +105,16 @@ export default function Home() {
                 transition={{ duration: 0.5 }}
                 className="text-center mb-6"
               >
-                <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">Steel Pipe Defects Analysis</h1>
+                <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">{t("upload.title")}</h1>
                 <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-                  Upload X-Ray images to detect and classify defects in steel pipes
+                  {t("upload.subtitle")}
                 </p>
               </motion.div>
 
               <div className="flex space-x-2">
                 <Button variant="outline" onClick={navigateToHistory} className="flex items-center">
-                  <HistoryIcon className="mr-2 h-4 w-4" />
-                  View History
-                  <ArrowRight className="ml-2 h-4 w-4" />
+                  <History className="mr-2 h-4 w-4" />
+                  {t("view.history")}
                 </Button>
 
                 <Button
@@ -128,7 +123,7 @@ export default function Home() {
                   className={`flex items-center ${showDebug ? "bg-amber-100" : ""}`}
                 >
                   <Bug className="mr-2 h-4 w-4" />
-                  {showDebug ? "Hide Debug" : "Show Debug"}
+                  {t("show.debug")}
                 </Button>
               </div>
             </div>

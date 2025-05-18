@@ -1,40 +1,34 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useCallback } from "react"
 import { useDropzone } from "react-dropzone"
-import { motion } from "framer-motion"
-import { UploadIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { UploadIcon } from "lucide-react"
+import { useLanguage } from "@/context/language-context"
+import { motion } from "framer-motion"
 
 interface UploadProps {
   onImageUpload: (imageUrl: string) => void
 }
 
 export function Upload({ onImageUpload }: UploadProps) {
-  const [isDragging, setIsDragging] = useState(false)
+  const { t } = useLanguage()
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
-      if (acceptedFiles && acceptedFiles.length > 0) {
+      if (acceptedFiles.length > 0) {
         const file = acceptedFiles[0]
-        const reader = new FileReader()
-
-        reader.onload = (e) => {
-          if (e.target?.result) {
-            onImageUpload(e.target.result as string)
-          }
-        }
-
-        reader.readAsDataURL(file)
+        const imageUrl = URL.createObjectURL(file)
+        onImageUpload(imageUrl)
       }
     },
-    [onImageUpload],
+    [onImageUpload]
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      "image/*": [".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"],
+      "image/*": [".png", ".jpg", ".jpeg", ".tiff", ".bmp"],
     },
     multiple: false,
   })
@@ -49,14 +43,11 @@ export function Upload({ onImageUpload }: UploadProps) {
       <div
         {...getRootProps()}
         className={`
-        border-2 border-dashed rounded-xl p-12 
-        transition-all duration-300 ease-in-out
-        bg-white shadow-sm hover:shadow-md
-        ${isDragActive ? "border-blue-500 bg-blue-50" : "border-gray-300"}
-      `}
-        onDragEnter={() => setIsDragging(true)}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={() => setIsDragging(false)}
+          border-2 border-dashed rounded-xl p-12 
+          transition-all duration-300 ease-in-out
+          bg-white shadow-sm hover:shadow-md
+          ${isDragActive ? "border-blue-500 bg-blue-50" : "border-gray-300"}
+        `}
       >
         <input {...getInputProps()} />
 
@@ -72,14 +63,14 @@ export function Upload({ onImageUpload }: UploadProps) {
             <UploadIcon size={28} />
           </motion.div>
 
-          <h3 className="text-xl font-semibold mb-2">Upload X-Ray Image</h3>
-          <p className="text-gray-500 mb-6">Drag & drop your X-Ray image here, or click to browse</p>
+          <h3 className="text-xl font-semibold mb-2">{t("upload.title")}</h3>
+          <p className="text-gray-500 mb-6">{t("upload.subtitle")}</p>
 
           <Button className="bg-blue-500 hover:bg-blue-600">
-            <UploadIcon className="mr-2 h-4 w-4" /> Select Image
+            <UploadIcon className="mr-2 h-4 w-4" /> {t("upload.button")}
           </Button>
 
-          <p className="mt-4 text-sm text-gray-400">Supported formats: PNG, JPG, TIFF, BMP</p>
+          <p className="mt-4 text-sm text-gray-400">{t("upload.formats")}</p>
         </div>
       </div>
     </motion.div>
