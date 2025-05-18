@@ -16,7 +16,6 @@ interface Segment {
   x1: number
   y1: number
   label: string
-  confidence: number
 }
 
 interface ResultsProps {
@@ -54,6 +53,8 @@ export function Results({
     mouseX: number
     mouseY: number
   } | null>(null)
+  const [editingLabel, setEditingLabel] = useState<number | null>(null)
+  const [editingLabelText, setEditingLabelText] = useState("")
 
   // For undo/redo functionality
   const [history, setHistory] = useState<Segment[][]>([])
@@ -87,7 +88,6 @@ export function Results({
           x1: segment.x + segment.width,
           y1: segment.y + segment.height,
           label: segment.label,
-          confidence: segment.confidence,
         }
       })
 
@@ -578,8 +578,7 @@ export function Results({
       y0: imageDimensions.height * 0.3,
       x1: imageDimensions.width * 0.5,
       y1: imageDimensions.height * 0.4,
-      label: "New Defect",
-      confidence: 0.75,
+      label: "New Defect"
     }
 
     const newSegments = [...results.segments, newSegment]
@@ -631,7 +630,7 @@ export function Results({
 
         // Set font to measure text width
         ctx.font = `bold ${FONT_SIZE}px Arial`
-        const labelText = `${segment.label} (${(segment.confidence * 100).toFixed(0)}%)`
+        const labelText = segment.label
         const labelWidth = ctx.measureText(labelText).width + LABEL_PADDING * 2
 
         // Check if label extends beyond top
@@ -687,7 +686,7 @@ export function Results({
         ctx.stroke()
 
         // Prepare for drawing label
-        const labelText = `${segment.label} (${(segment.confidence * 100).toFixed(0)}%)`
+        const labelText = segment.label
         ctx.font = `bold ${FONT_SIZE}px Arial`
         const textMetrics = ctx.measureText(labelText)
         const labelWidth = textMetrics.width + LABEL_PADDING * 2
@@ -769,6 +768,40 @@ export function Results({
       setSelectedSegment(null)
     }
   }, [isEditMode])
+
+  // Handle label edit start
+  const handleLabelDoubleClick = (e: React.MouseEvent, segmentId: number, currentLabel: string) => {
+    if (!isEditMode) return
+    e.stopPropagation()
+    setEditingLabel(segmentId)
+    setEditingLabelText(currentLabel)
+  }
+
+  // Handle label edit save
+  const handleLabelSave = (segmentId: number) => {
+    if (!results?.segments || editingLabel === null) return
+
+    const updatedSegments = results.segments.map((segment: Segment) => {
+      if (segment.id === segmentId) {
+        return { ...segment, label: editingLabelText }
+      }
+      return segment
+    })
+
+    if (onSegmentsChange) {
+      onSegmentsChange(updatedSegments)
+    }
+    setEditingLabel(null)
+  }
+
+  // Handle label edit cancel
+  const handleLabelKeyDown = (e: React.KeyboardEvent, segmentId: number) => {
+    if (e.key === 'Enter') {
+      handleLabelSave(segmentId)
+    } else if (e.key === 'Escape') {
+      setEditingLabel(null)
+    }
+  }
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -904,13 +937,27 @@ export function Results({
                               onClick={(e) => handleSegmentClick(e, segment.id)}
                               onMouseDown={(e) => handleSegmentDragStart(e, segment.id)}
                             >
-                              <span
-                                className={`absolute -top-6 left-0 text-xs font-medium px-1 rounded whitespace-nowrap ${
-                                  isSelected ? "bg-blue-500" : "bg-red-500"
-                                } text-white`}
-                              >
-                                {segment.label} ({(segment.confidence * 100).toFixed(0)}%)
-                              </span>
+                              {editingLabel === segment.id ? (
+                                <input
+                                  type="text"
+                                  className="absolute -top-8 left-0 text-xs font-medium px-2 py-1 rounded bg-white border border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  value={editingLabelText}
+                                  onChange={(e) => setEditingLabelText(e.target.value)}
+                                  onKeyDown={(e) => handleLabelKeyDown(e, segment.id)}
+                                  onBlur={() => handleLabelSave(segment.id)}
+                                  autoFocus
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              ) : (
+                                <span
+                                  className={`absolute -top-6 left-0 text-xs font-medium px-1 rounded whitespace-nowrap ${
+                                    isSelected ? "bg-blue-500" : "bg-red-500"
+                                  } text-white`}
+                                  onDoubleClick={(e) => handleLabelDoubleClick(e, segment.id, segment.label)}
+                                >
+                                  {segment.label}
+                                </span>
+                              )}
 
                               {/* Resize handles - only show for selected segment in edit mode */}
                               {isEditMode && isSelected && (
@@ -996,7 +1043,6 @@ export function Results({
                       style={{ cursor: isEditMode ? "pointer" : "default" }}
                     >
                       <span>{segment.label}</span>
-                      <span className="text-sm text-gray-500">{(segment.confidence * 100).toFixed(0)}%</span>
                     </motion.li>
                   ))}
                 </ul>

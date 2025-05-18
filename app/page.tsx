@@ -47,10 +47,9 @@ export default function Home() {
       setIsAnalyzing(false)
       const analysisResults = {
         classification: "Longitudinal Crack",
-        confidence: 0.92,
         segments: [
-          { id: 1, x0: 120, y0: 80, x1: 220, y1: 110, label: "Crack", confidence: 0.95 },
-          { id: 2, x0: 250, y0: 150, x1: 320, y1: 175, label: "Porosity", confidence: 0.87 },
+          { id: 1, x0: 120, y0: 80, x1: 220, y1: 110, label: "Crack" },
+          { id: 2, x0: 250, y0: 150, x1: 320, y1: 175, label: "Porosity" },
         ],
       }
 

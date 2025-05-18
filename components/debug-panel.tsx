@@ -12,7 +12,6 @@ interface Segment {
   x1: number
   y1: number
   label: string
-  confidence: number
 }
 
 interface DebugPanelProps {
@@ -26,7 +25,7 @@ export function DebugPanel({ segments, onSegmentsChange }: DebugPanelProps) {
   const handleSegmentChange = (id: number, field: keyof Segment, value: any) => {
     const updatedSegments = segments.map((segment) => {
       if (segment.id === id) {
-        return { ...segment, [field]: field === "confidence" ? Number.parseFloat(value) : Number.parseInt(value) }
+        return { ...segment, [field]: field === "label" ? value : Number.parseInt(value) }
       }
       return segment
     })
@@ -49,8 +48,7 @@ export function DebugPanel({ segments, onSegmentsChange }: DebugPanelProps) {
       y0: 100,
       x1: 180,
       y1: 130,
-      label: "New Defect",
-      confidence: 0.75,
+      label: "New Defect"
     }
     onSegmentsChange([...segments, newSegment])
     setSelectedSegment(newId)
@@ -131,24 +129,12 @@ export function DebugPanel({ segments, onSegmentsChange }: DebugPanelProps) {
                   className="h-8"
                 />
               </div>
-              <div>
+              <div className="col-span-2">
                 <label className="text-xs text-gray-500 block mb-1">Label</label>
                 <Input
                   type="text"
                   value={segment.label}
                   onChange={(e) => handleSegmentChange(segment.id, "label", e.target.value)}
-                  className="h-8"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Confidence (0-1)</label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={segment.confidence}
-                  onChange={(e) => handleSegmentChange(segment.id, "confidence", e.target.value)}
                   className="h-8"
                 />
               </div>

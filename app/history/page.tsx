@@ -137,7 +137,7 @@ export default function HistoryPage() {
                       <div className="flex flex-wrap gap-2">
                         {item.results?.segments?.map((segment: any) => (
                           <span key={segment.id} className="text-xs bg-gray-100 px-2 py-1 rounded-full">
-                            {segment.label} ({(segment.confidence * 100).toFixed(0)}%)
+                            {segment.label}
                           </span>
                         ))}
                       </div>
