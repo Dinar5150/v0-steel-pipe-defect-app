@@ -312,33 +312,27 @@ export function Results({
 
     // Ensure minimum size (20px in image coordinates)
     const minSize = 20
+
+    // Constrain to image boundaries while maintaining minimum size
+    x0 = Math.max(0, Math.min(x0, imageDimensions.width - minSize))
+    y0 = Math.max(0, Math.min(y0, imageDimensions.height - minSize))
+    x1 = Math.max(minSize, Math.min(x1, imageDimensions.width))
+    y1 = Math.max(minSize, Math.min(y1, imageDimensions.height))
+
+    // Ensure minimum size is maintained
     if (x1 - x0 < minSize) {
-      x1 = x0 + minSize
+      if (x1 >= imageDimensions.width) {
+        x0 = x1 - minSize
+      } else {
+        x1 = x0 + minSize
+      }
     }
     if (y1 - y0 < minSize) {
-      y1 = y0 + minSize
-    }
-
-    // Constrain to image boundaries
-    if (x0 < 0) {
-      const width = x1 - x0
-      x0 = 0
-      x1 = Math.min(x0 + width, imageDimensions.width)
-    }
-    if (y0 < 0) {
-      const height = y1 - y0
-      y0 = 0
-      y1 = Math.min(y0 + height, imageDimensions.height)
-    }
-    if (x1 > imageDimensions.width) {
-      const width = x1 - x0
-      x1 = imageDimensions.width
-      x0 = Math.max(x1 - width, 0)
-    }
-    if (y1 > imageDimensions.height) {
-      const height = y1 - y0
-      y1 = imageDimensions.height
-      y0 = Math.max(y1 - height, 0)
+      if (y1 >= imageDimensions.height) {
+        y0 = y1 - minSize
+      } else {
+        y1 = y0 + minSize
+      }
     }
 
     return { ...segment, x0, y0, x1, y1 }
@@ -379,18 +373,19 @@ export function Results({
 
               // Apply changes based on which handle is being dragged
               if (resizeHandle.includes("e")) {
-                newX1 = Math.max(newX0 + 20, startX1 + deltaX)
+                newX1 = startX1 + deltaX
               }
               if (resizeHandle.includes("w")) {
-                newX0 = Math.min(newX1 - 20, startX0 + deltaX)
+                newX0 = startX0 + deltaX
               }
               if (resizeHandle.includes("s")) {
-                newY1 = Math.max(newY0 + 20, startY1 + deltaY)
+                newY1 = startY1 + deltaY
               }
               if (resizeHandle.includes("n")) {
-                newY0 = Math.min(newY1 - 20, startY0 + deltaY)
+                newY0 = startY0 + deltaY
               }
 
+              // Create the updated segment
               updatedSegment = {
                 ...segment,
                 x0: newX0,
