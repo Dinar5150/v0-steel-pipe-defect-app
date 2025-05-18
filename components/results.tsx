@@ -498,9 +498,17 @@ export function Results({
     document.body.style.overflow = "hidden"
   }
 
+  // Handle mouse leave for disabling page scroll
   const handleMouseLeave = () => {
     setIsHovering(false)
     document.body.style.overflow = ""
+  }
+
+  // Handle container click to deselect segment when clicking outside
+  const handleContainerClick = (e: React.MouseEvent) => {
+    if (isEditMode && e.target === e.currentTarget) {
+      setSelectedSegment(null)
+    }
   }
 
   // Handle segment selection
@@ -742,6 +750,13 @@ export function Results({
     }
   }, [isHovering, isDraggingSegment, results])
 
+  // Add effect to deselect when edit mode is disabled
+  useEffect(() => {
+    if (!isEditMode) {
+      setSelectedSegment(null)
+    }
+  }, [isEditMode])
+
   return (
     <div className="max-w-5xl mx-auto">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -801,18 +816,20 @@ export function Results({
 
           <div
             ref={imageContainerRef}
-            className="relative overflow-hidden rounded-lg bg-gray-100 h-[400px] flex items-center justify-center"
+            className="relative w-full h-[380px] overflow-hidden rounded-lg bg-gray-100 select-none flex items-center justify-center"
+            onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
-            onWheel={handleWheel}
+            onMouseUp={handleMouseUp}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
-            style={{ cursor: isDragging ? "grabbing" : isEditMode ? "default" : "grab" }}
+            onWheel={handleWheel}
+            onClick={handleContainerClick}
           >
             {isAnalyzing ? (
               <Skeleton className="w-full h-full" />
             ) : (
               <div
-                className="relative"
+                className="relative flex items-center justify-center"
                 onMouseDown={handleMouseDown}
                 onMouseUp={handleMouseUp}
                 style={{
