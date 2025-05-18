@@ -268,6 +268,7 @@ export function Results({
       x: e.clientX - position.x,
       y: e.clientY - position.y,
     })
+    // Remove scroll lock
   }
 
   // Convert between screen coordinates and image coordinates
@@ -449,58 +450,17 @@ export function Results({
     setIsDraggingSegment(false)
     setResizeHandle(null)
     setResizeStartData(null)
-  }
-
-  // Handle mouse wheel for zooming
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault()
-
-    if (!imageContainerRef.current || !imageWrapperRef.current) return
-
-    // Get container bounds
-    const containerRect = imageContainerRef.current.getBoundingClientRect()
-    const wrapperRect = imageWrapperRef.current.getBoundingClientRect()
-
-    // Calculate mouse position relative to the container
-    const mouseX = e.clientX - containerRect.left
-    const mouseY = e.clientY - containerRect.top
-
-    // Calculate the center of the image wrapper
-    const wrapperCenterX = wrapperRect.left + wrapperRect.width / 2 - containerRect.left
-    const wrapperCenterY = wrapperRect.top + wrapperRect.height / 2 - containerRect.top
-
-    // Calculate mouse position relative to the center of the image wrapper
-    const relativeX = mouseX - wrapperCenterX
-    const relativeY = mouseY - wrapperCenterY
-
-    // Determine zoom direction based on wheel delta
-    const zoomDelta = e.deltaY < 0 ? 0.1 : -0.1
-
-    // Calculate new zoom level with limits
-    const newZoom = Math.min(Math.max(zoom + zoomDelta, 0.5), 3)
-    const zoomFactor = newZoom / zoom
-
-    // Calculate how the position should change to keep the mouse over the same image point
-    const newPosition = {
-      x: position.x - relativeX * (zoomFactor - 1),
-      y: position.y - relativeY * (zoomFactor - 1),
-    }
-
-    // Update state
-    setZoom(newZoom)
-    setPosition(newPosition)
+    // Remove scroll restore
   }
 
   // Handle mouse enter/leave for disabling page scroll
   const handleMouseEnter = () => {
     setIsHovering(true)
-    document.body.style.overflow = "hidden"
   }
 
   // Handle mouse leave for disabling page scroll
   const handleMouseLeave = () => {
     setIsHovering(false)
-    document.body.style.overflow = ""
   }
 
   // Handle container click to deselect segment when clicking outside
@@ -752,18 +712,15 @@ export function Results({
       setIsDraggingSegment(false)
       setResizeHandle(null)
       setResizeStartData(null)
+      // Remove scroll restore
     }
 
     window.addEventListener("mouseup", handleGlobalMouseUp)
 
     return () => {
       window.removeEventListener("mouseup", handleGlobalMouseUp)
-      // Ensure we restore scrolling when component unmounts
-      if (isHovering) {
-        document.body.style.overflow = ""
-      }
     }
-  }, [isHovering, isDraggingSegment, results])
+  }, [isDraggingSegment, results])
 
   // Add effect to deselect when edit mode is disabled
   useEffect(() => {
@@ -806,6 +763,49 @@ export function Results({
     }
   }
 
+  // Add touch event handlers for mobile drag support
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    if (isEditMode && selectedSegment !== null) return
+    if (e.touches.length !== 1) return
+    setIsDragging(true)
+    setDragStart({
+      x: e.touches[0].clientX - position.x,
+      y: e.touches[0].clientY - position.y,
+    })
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+    if (!isDragging || e.touches.length !== 1) return
+    const newX = e.touches[0].clientX - dragStart.x
+    const newY = e.touches[0].clientY - dragStart.y
+    setPosition({
+      x: newX,
+      y: newY,
+    })
+  }
+
+  const handleTouchEnd = () => {
+    setIsDragging(false)
+  }
+
+  // Prevent page scroll on mobile when dragging
+  useEffect(() => {
+    const container = imageContainerRef.current;
+    if (!container) return;
+
+    const handleNativeTouchMove = (e: TouchEvent) => {
+      if (isDragging) {
+        e.preventDefault();
+      }
+    };
+    container.addEventListener("touchmove", handleNativeTouchMove, { passive: false });
+    return () => {
+      container.removeEventListener("touchmove", handleNativeTouchMove);
+    };
+  }, [isDragging]);
+
   return (
     <div className="max-w-5xl mx-auto">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -813,13 +813,6 @@ export function Results({
         <div className="md:col-span-2 bg-white rounded-xl shadow-sm p-4 relative">
           <div className="flex justify-between mb-4">
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={handleZoomIn}>
-                <ZoomIn className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleZoomOut}>
-                <ZoomOut className="h-4 w-4" />
-              </Button>
-
               {onToggleEditMode && results && !isAnalyzing && (
                 <Button
                   variant="outline"
@@ -865,14 +858,18 @@ export function Results({
 
           <div
             ref={imageContainerRef}
-            className="relative w-full h-[380px] overflow-hidden rounded-lg bg-gray-100 select-none flex items-center justify-center"
+            className={`relative w-full h-[380px] overflow-hidden rounded-lg bg-gray-100 select-none flex items-center justify-center ${
+              isDragging ? 'cursor-grabbing' : 'cursor-grab'
+            }`}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
-            onWheel={handleWheel}
             onClick={handleContainerClick}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
           >
             {isAnalyzing ? (
               <Skeleton className="w-full h-full" />
@@ -1011,6 +1008,16 @@ export function Results({
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Move zoom controls outside the image but inside the container */}
+          <div className="absolute bottom-6 right-6 flex flex-col gap-2 z-10">
+            <Button variant="outline" size="sm" onClick={handleZoomIn} className="bg-white/80 hover:bg-white">
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleZoomOut} className="bg-white/80 hover:bg-white">
+              <ZoomOut className="h-4 w-4" />
+            </Button>
           </div>
         </div>
 
