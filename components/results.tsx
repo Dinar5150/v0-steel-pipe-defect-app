@@ -417,6 +417,7 @@ export function Results({
 
         if (onSegmentsChange) {
           onSegmentsChange(updatedSegments)
+          // Don't add to history during drag/resize - we'll add on mouse up
         }
         return
       }
@@ -501,8 +502,15 @@ export function Results({
 
   // Handle container click to deselect segment when clicking outside
   const handleContainerClick = (e: React.MouseEvent) => {
-    if (isEditMode && e.target === e.currentTarget) {
-      setSelectedSegment(null)
+    if (isEditMode) {
+      // Check if the click target is the container or image wrapper
+      const isClickOnContainer = e.target === e.currentTarget || 
+        e.target === imageWrapperRef.current ||
+        e.target === imageRef.current;
+        
+      if (isClickOnContainer) {
+        setSelectedSegment(null);
+      }
     }
   }
 
@@ -720,6 +728,16 @@ export function Results({
     // Set the source of the image
     img.src = image
   }
+
+  // Update history when segments change (except during drag/resize)
+  useEffect(() => {
+    if (results?.segments && !isDraggingSegment) {
+      // Only add to history if the segments have actually changed
+      if (history.length === 0 || JSON.stringify(history[historyIndex]) !== JSON.stringify(results.segments)) {
+        addToHistory([...results.segments]);
+      }
+    }
+  }, [results?.segments]);
 
   // Add event listeners for mouse up outside the component
   useEffect(() => {

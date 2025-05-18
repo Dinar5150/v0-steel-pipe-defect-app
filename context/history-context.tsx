@@ -8,11 +8,13 @@ export interface AnalysisHistoryItem {
   timestamp: number
   image: string
   results: any
+  isEdited?: boolean
 }
 
-interface HistoryContextType {
+export interface HistoryContextType {
   history: AnalysisHistoryItem[]
   addToHistory: (image: string, results: any) => void
+  updateHistoryItem: (image: string, results: any) => void
   clearHistory: () => void
   deleteHistoryItem: (id: string) => void
 }
@@ -51,6 +53,35 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     setHistory((prev) => [newItem, ...prev])
   }
 
+  // Update an existing history item
+  const updateHistoryItem = (image: string, results: any) => {
+    setHistory((prev) => {
+      const existingItemIndex = prev.findIndex(item => item.image === image)
+      if (existingItemIndex === -1) {
+        // If item doesn't exist, add as new
+        const newItem: AnalysisHistoryItem = {
+          id: Date.now().toString(),
+          timestamp: Date.now(),
+          image,
+          results,
+        }
+        return [newItem, ...prev]
+      }
+
+      // Update existing item
+      const updatedHistory = [...prev]
+      updatedHistory[existingItemIndex] = {
+        ...updatedHistory[existingItemIndex],
+        results,
+        isEdited: true,
+        timestamp: Date.now(), // Update timestamp to move it to the top
+      }
+      
+      // Sort by timestamp to keep most recent first
+      return updatedHistory.sort((a, b) => b.timestamp - a.timestamp)
+    })
+  }
+
   // Clear all history
   const clearHistory = () => {
     setHistory([])
@@ -62,7 +93,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <HistoryContext.Provider value={{ history, addToHistory, clearHistory, deleteHistoryItem }}>
+    <HistoryContext.Provider value={{ history, addToHistory, updateHistoryItem, clearHistory, deleteHistoryItem }}>
       {children}
     </HistoryContext.Provider>
   )

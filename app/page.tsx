@@ -15,7 +15,7 @@ import { useHistory } from "@/context/history-context"
 
 export default function Home() {
   const router = useRouter()
-  const { addToHistory } = useHistory()
+  const { addToHistory, updateHistoryItem } = useHistory()
   const [image, setImage] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [results, setResults] = useState<any | null>(null)
@@ -76,7 +76,13 @@ export default function Home() {
   }
 
   const toggleEditMode = () => {
-    setIsEditMode(!isEditMode)
+    const newEditMode = !isEditMode
+    setIsEditMode(newEditMode)
+    
+    // When exiting edit mode, update the history with current results
+    if (!newEditMode && image && results) {
+      updateHistoryItem(image, results)
+    }
   }
 
   const handleSegmentsChange = (updatedSegments: any[]) => {

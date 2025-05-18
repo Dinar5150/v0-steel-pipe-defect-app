@@ -125,6 +125,11 @@ export default function HistoryPage() {
                     <div className="flex items-center text-sm text-gray-500 mb-3">
                       <Calendar className="h-4 w-4 mr-1" />
                       {formatDate(item.timestamp)}
+                      {item.isEdited && (
+                        <span className="ml-2 px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded">
+                          Edited
+                        </span>
+                      )}
                     </div>
 
                     <div className="mb-4">
