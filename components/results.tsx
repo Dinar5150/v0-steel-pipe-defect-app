@@ -237,13 +237,14 @@ export function Results({
     const relativeY = containerCenterY - wrapperCenterY
 
     // Calculate new zoom level with limits
-    const newZoom = Math.min(Math.max(zoom + zoomDelta, 0.5), 3)
-    const zoomFactor = newZoom / zoom
+    // Use a linear scale for zooming (multiply by 1.2 for zoom in, divide by 1.2 for zoom out)
+    const zoomFactor = zoomDelta > 0 ? 1.2 : 1/1.2
+    const newZoom = Math.min(Math.max(zoom * zoomFactor, 0.5), 30) // Increased max zoom to 30x
 
     // Calculate how the position should change to keep the window center over the same image point
     const newPosition = {
-      x: position.x - relativeX * (zoomFactor - 1),
-      y: position.y - relativeY * (zoomFactor - 1),
+      x: position.x - relativeX * (newZoom/zoom - 1),
+      y: position.y - relativeY * (newZoom/zoom - 1),
     }
 
     // Update state
@@ -252,23 +253,34 @@ export function Results({
   }
 
   const handleZoomIn = () => {
-    zoomFromWindowCenter(0.25)
+    zoomFromWindowCenter(1) // Positive value for zoom in
   }
 
   const handleZoomOut = () => {
-    zoomFromWindowCenter(-0.25)
+    zoomFromWindowCenter(-1) // Negative value for zoom out
   }
 
   // Handle mouse down event to start dragging
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (isEditMode && selectedSegment !== null) return
-
+    // Allow panning even if a segment is selected
+    // Only block if edit mode and mouse down is on a segment or handle
+    if (isEditMode && selectedSegment !== null) {
+      // Check if the click is on a handle or segment
+      // If so, do not start panning
+      // Otherwise, allow panning
+      const target = e.target as HTMLElement;
+      if (
+        target.closest('.segment-handle') ||
+        target.closest('.segment-box')
+      ) {
+        return;
+      }
+    }
     setIsDragging(true)
     setDragStart({
       x: e.clientX - position.x,
       y: e.clientY - position.y,
     })
-    // Remove scroll lock
   }
 
   // Convert between screen coordinates and image coordinates
@@ -280,11 +292,11 @@ export function Results({
     const containerRect = imageContainerRef.current.getBoundingClientRect()
     const imgRect = imageRef.current.getBoundingClientRect()
 
-    // Calculate position relative to the container
+    // Calculate position relative to the container with high precision
     const relativeX = screenX - containerRect.left - position.x
     const relativeY = screenY - containerRect.top - position.y
 
-    // Account for zoom
+    // Account for zoom with maximum precision
     const zoomedX = relativeX / zoom
     const zoomedY = relativeY / zoom
 
@@ -296,7 +308,7 @@ export function Results({
     const offsetX = zoomedX - imgCenterX
     const offsetY = zoomedY - imgCenterY
 
-    // Convert to image natural coordinates
+    // Convert to image natural coordinates with maximum precision
     const scaleX = (imageDimensions.width / imgRect.width) * zoom
     const scaleY = (imageDimensions.height / imgRect.height) * zoom
 
@@ -370,6 +382,7 @@ export function Results({
               const deltaX = mouseX - startMouseX
               const deltaY = mouseY - startMouseY
 
+              // Use floating point for smooth resizing
               let newX0 = startX0
               let newY0 = startY0
               let newX1 = startX1
@@ -401,8 +414,15 @@ export function Results({
               // Moving logic
               const width = segment.x1 - segment.x0
               const height = segment.y1 - segment.y0
-              const newX0 = mouseX - dragOffset.x
-              const newY0 = mouseY - dragOffset.y
+              // Use floating point for smooth movement
+              let newX0 = mouseX - dragOffset.x
+              let newY0 = mouseY - dragOffset.y
+
+              // Clamp position so the segment stays fully inside the image, but do not resize
+              if (newX0 < 0) newX0 = 0
+              if (newX0 + width > imageDimensions.width) newX0 = imageDimensions.width - width
+              if (newY0 < 0) newY0 = 0
+              if (newY0 + height > imageDimensions.height) newY0 = imageDimensions.height - height
 
               updatedSegment = {
                 ...segment,
@@ -532,22 +552,43 @@ export function Results({
 
   // Handle adding a new segment
   const handleAddSegment = () => {
-    if (!results || !onSegmentsChange) return
+    if (!results || !onSegmentsChange || !imageContainerRef.current || !imageRef.current) return;
 
-    const newId = Math.max(0, ...results.segments.map((s: Segment) => s.id)) + 1
+    // Get container and image info
+    const containerRect = imageContainerRef.current.getBoundingClientRect();
+    const imgRect = imageRef.current.getBoundingClientRect();
+
+    // Center of the container in container coordinates
+    const containerCenterX = containerRect.width / 2;
+    const containerCenterY = containerRect.height / 2;
+
+    // Account for pan and zoom to get image coordinates
+    const imageDisplayWidth = imgRect.width;
+    const imageDisplayHeight = imgRect.height;
+    const imageCenterX = imageDisplayWidth / 2;
+    const imageCenterY = imageDisplayHeight / 2;
+
+    const xOnImage = (containerCenterX - imageCenterX - position.x) / zoom + imageDimensions.width / 2;
+    const yOnImage = (containerCenterY - imageCenterY - position.y) / zoom + imageDimensions.height / 2;
+
+    // Use a larger fixed size in image coordinates
+    const segW = 200;
+    const segH = 200;
+
+    const newId = Math.max(0, ...results.segments.map((s: Segment) => s.id)) + 1;
     const newSegment: Segment = {
       id: newId,
-      x0: imageDimensions.width * 0.3,
-      y0: imageDimensions.height * 0.3,
-      x1: imageDimensions.width * 0.5,
-      y1: imageDimensions.height * 0.4,
+      x0: xOnImage - segW / 2,
+      y0: yOnImage - segH / 2,
+      x1: xOnImage + segW / 2,
+      y1: yOnImage + segH / 2,
       label: t("new.defect")
-    }
+    };
 
-    const newSegments = [...results.segments, newSegment]
-    onSegmentsChange(newSegments)
-    addToHistory(newSegments)
-    setSelectedSegment(newId)
+    const newSegments = [...results.segments, newSegment];
+    onSegmentsChange(newSegments);
+    addToHistory(newSegments);
+    setSelectedSegment(newId);
   }
 
   // Handle deleting a segment
@@ -920,10 +961,15 @@ export function Results({
                           const percentX1 = (segment.x1 / imageDimensions.width) * 100
                           const percentY1 = (segment.y1 / imageDimensions.height) * 100
 
+                          // For label: position above and outside the box, always centered horizontally
+                          const labelOffset = 8 // px above the box in image coordinates
+                          const labelTop = ((segment.y0 - labelOffset) / imageDimensions.height) * 100
+                          const labelLeft = (segment.x0 / imageDimensions.width) * 100
+
                           return (
                             <div
                               key={segment.id}
-                              className={`absolute border-2 rounded-sm ${
+                              className={`absolute border-2 rounded-sm segment-box ${
                                 isSelected ? "border-blue-500 bg-blue-500/20" : "border-red-500 bg-red-500/20"
                               }`}
                               style={{
@@ -933,68 +979,131 @@ export function Results({
                                 height: `${percentY1 - percentY0}%`,
                                 pointerEvents: isEditMode ? "auto" : "none",
                                 cursor: isEditMode ? "move" : "default",
+                                borderWidth: `${1/zoom}px`,
+                                borderRadius: `${6/zoom}px`,
                               }}
                               onClick={(e) => handleSegmentClick(e, segment.id)}
                               onMouseDown={(e) => handleSegmentDragStart(e, segment.id)}
                             >
-                              {editingLabel === segment.id ? (
-                                <input
-                                  type="text"
-                                  className="absolute -top-8 left-0 text-xs font-medium px-2 py-1 rounded bg-white border border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                  value={editingLabelText}
-                                  onChange={(e) => setEditingLabelText(e.target.value)}
-                                  onKeyDown={(e) => handleLabelKeyDown(e, segment.id)}
-                                  onBlur={() => handleLabelSave(segment.id)}
-                                  autoFocus
-                                  onClick={(e) => e.stopPropagation()}
-                                />
-                              ) : (
-                                <span
-                                  className={`absolute -top-6 left-0 text-xs font-medium px-1 rounded whitespace-nowrap ${
-                                    isSelected ? "bg-blue-500" : "bg-red-500"
-                                  } text-white`}
-                                  onDoubleClick={(e) => handleLabelDoubleClick(e, segment.id, segment.label)}
-                                >
-                                  {segment.label}
-                                </span>
-                              )}
+                              {/* Label: position above and outside the box, always centered horizontally, with fixed gap regardless of zoom */}
+                              <div
+                                className="absolute"
+                                style={{
+                                  left: `50%`,
+                                  top: `100%`,
+                                  transform: `translateX(-50%) scale(${1/zoom})`,
+                                  transformOrigin: "top center",
+                                  width: 'max-content',
+                                  pointerEvents: 'auto',
+                                }}
+                              >
+                                {editingLabel === segment.id ? (
+                                  <input
+                                    type="text"
+                                    className="text-xs font-medium px-2 py-1 rounded bg-white border border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    value={editingLabelText}
+                                    onChange={(e) => setEditingLabelText(e.target.value)}
+                                    onKeyDown={(e) => handleLabelKeyDown(e, segment.id)}
+                                    onBlur={() => handleLabelSave(segment.id)}
+                                    autoFocus
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                ) : (
+                                  <span
+                                    className={`text-xs font-medium px-1 rounded whitespace-nowrap ${
+                                      isSelected ? "bg-blue-500" : "bg-red-500"
+                                    } text-white`}
+                                    onDoubleClick={(e) => handleLabelDoubleClick(e, segment.id, segment.label)}
+                                  >
+                                    {segment.label}
+                                  </span>
+                                )}
+                              </div>
 
                               {/* Resize handles - only show for selected segment in edit mode */}
                               {isEditMode && isSelected && (
                                 <>
                                   {/* Corner handles */}
                                   <div
-                                    className="absolute -top-1 -left-1 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nwse-resize"
+                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nwse-resize segment-handle"
+                                    style={{
+                                      left: `0%`,
+                                      top: `0%`,
+                                      transform: `translate(-50%, -50%) scale(${1/zoom})`,
+                                      transformOrigin: "center",
+                                    }}
                                     onMouseDown={(e) => handleResizeStart(e, segment.id, "nw")}
                                   />
                                   <div
-                                    className="absolute -top-1 -right-1 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nesw-resize"
+                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nesw-resize segment-handle"
+                                    style={{
+                                      right: `0%`,
+                                      top: `0%`,
+                                      transform: `translate(50%, -50%) scale(${1/zoom})`,
+                                      transformOrigin: "center",
+                                    }}
                                     onMouseDown={(e) => handleResizeStart(e, segment.id, "ne")}
                                   />
                                   <div
-                                    className="absolute -bottom-1 -left-1 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nesw-resize"
+                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nesw-resize"
+                                    style={{
+                                      left: `0%`,
+                                      bottom: `0%`,
+                                      transform: `translate(-50%, 50%) scale(${1/zoom})`,
+                                      transformOrigin: "center",
+                                    }}
                                     onMouseDown={(e) => handleResizeStart(e, segment.id, "sw")}
                                   />
                                   <div
-                                    className="absolute -bottom-1 -right-1 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nwse-resize"
+                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nwse-resize"
+                                    style={{
+                                      right: `0%`,
+                                      bottom: `0%`,
+                                      transform: `translate(50%, 50%) scale(${1/zoom})`,
+                                      transformOrigin: "center",
+                                    }}
                                     onMouseDown={(e) => handleResizeStart(e, segment.id, "se")}
                                   />
 
                                   {/* Edge handles */}
                                   <div
-                                    className="absolute top-1/2 -left-1 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ew-resize transform -translate-y-1/2"
+                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ew-resize"
+                                    style={{
+                                      left: `0%`,
+                                      top: `50%`,
+                                      transform: `translate(-50%, -50%) scale(${1/zoom})`,
+                                      transformOrigin: "center",
+                                    }}
                                     onMouseDown={(e) => handleResizeStart(e, segment.id, "w")}
                                   />
                                   <div
-                                    className="absolute top-1/2 -right-1 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ew-resize transform -translate-y-1/2"
+                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ew-resize"
+                                    style={{
+                                      right: `0%`,
+                                      top: `50%`,
+                                      transform: `translate(50%, -50%) scale(${1/zoom})`,
+                                      transformOrigin: "center",
+                                    }}
                                     onMouseDown={(e) => handleResizeStart(e, segment.id, "e")}
                                   />
                                   <div
-                                    className="absolute -top-1 left-1/2 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ns-resize transform -translate-x-1/2"
+                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ns-resize"
+                                    style={{
+                                      top: `0%`,
+                                      left: `50%`,
+                                      transform: `translate(-50%, -50%) scale(${1/zoom})`,
+                                      transformOrigin: "center",
+                                    }}
                                     onMouseDown={(e) => handleResizeStart(e, segment.id, "n")}
                                   />
                                   <div
-                                    className="absolute -bottom-1 left-1/2 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ns-resize transform -translate-x-1/2"
+                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ns-resize"
+                                    style={{
+                                      bottom: `0%`,
+                                      left: `50%`,
+                                      transform: `translate(-50%, 50%) scale(${1/zoom})`,
+                                      transformOrigin: "center",
+                                    }}
                                     onMouseDown={(e) => handleResizeStart(e, segment.id, "s")}
                                   />
                                 </>

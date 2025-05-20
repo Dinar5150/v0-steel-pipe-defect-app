@@ -11,21 +11,29 @@ import { useLanguage } from "@/context/language-context"
 
 export default function LoginPage() {
   const router = useRouter()
-  const { login } = useAuth()
+  const { login, signup } = useAuth()
   const { t, language, toggleLanguage } = useLanguage()
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  const [isSignUp, setIsSignUp] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
 
     try {
-      await login(username, password)
-      router.push("/")
+      const success = isSignUp 
+        ? await signup(username, password)
+        : await login(username, password)
+      
+      if (success) {
+        router.push("/")
+      } else {
+        setError(t(isSignUp ? "signup.error" : "login.error"))
+      }
     } catch (err) {
-      setError(t("login.error"))
+      setError(t(isSignUp ? "signup.error" : "login.error"))
     }
   }
 
@@ -46,10 +54,10 @@ export default function LoginPage() {
       >
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            {t("login.title")}
+            {t(isSignUp ? "signup.title" : "login.title")}
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            {t("login.subtitle")}
+            {t(isSignUp ? "signup.subtitle" : "login.subtitle")}
           </p>
         </div>
 
@@ -91,13 +99,23 @@ export default function LoginPage() {
             <div className="text-red-500 text-sm text-center">{error}</div>
           )}
 
-          <div>
+          <div className="space-y-4">
             <Button
               type="submit"
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
-              {t("login.button")}
+              {t(isSignUp ? "signup.button" : "login.button")}
             </Button>
+            
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => setIsSignUp(!isSignUp)}
+                className="text-sm text-blue-600 hover:text-blue-500"
+              >
+                {t(isSignUp ? "login.switchToLogin" : "login.switchToSignup")}
+              </button>
+            </div>
           </div>
         </form>
       </motion.div>

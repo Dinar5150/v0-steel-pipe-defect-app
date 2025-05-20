@@ -28,6 +28,12 @@ type TranslationKeys =
   | "login.password"
   | "login.button"
   | "login.error"
+  | "login.switchToLogin"
+  | "login.switchToSignup"
+  | "signup.title"
+  | "signup.subtitle"
+  | "signup.button"
+  | "signup.error"
   | "history.title"
   | "history.clear"
   | "history.no"
@@ -76,6 +82,12 @@ const translations: Translations = {
     "login.password": "Password",
     "login.button": "Sign In",
     "login.error": "Invalid username or password",
+    "login.switchToLogin": "Already have an account? Sign in",
+    "login.switchToSignup": "Don't have an account? Sign up",
+    "signup.title": "Create Account",
+    "signup.subtitle": "Sign up to get started with the application",
+    "signup.button": "Sign Up",
+    "signup.error": "Failed to create account",
     "history.title": "Analysis History",
     "history.clear": "Clear History",
     "history.no": "No analysis history available.",
@@ -111,6 +123,12 @@ const translations: Translations = {
     "login.password": "Пароль",
     "login.button": "Войти",
     "login.error": "Неверное имя пользователя или пароль",
+    "login.switchToLogin": "Уже есть аккаунт? Войти",
+    "login.switchToSignup": "Нету аккаунта? Зарегистрироваться",
+    "signup.title": "Создать аккаунт",
+    "signup.subtitle": "Зарегистрируйтесь, чтобы начать работу с приложением",
+    "signup.button": "Зарегистрироваться",
+    "signup.error": "Не удалось создать аккаунт",
     "history.title": "История анализов",
     "history.clear": "Очистить историю",
     "history.no": "История анализов отсутствует.",
