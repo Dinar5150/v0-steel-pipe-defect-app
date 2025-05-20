@@ -25,8 +25,8 @@ from torch.nn.modules.normalization import LayerNorm, GroupNorm
 from torch.nn.modules.padding import ZeroPad2d
 from torch.nn.modules.conv import ConvTranspose2d
 from ultralytics.nn.modules.block import C2f, C3, C3k2
-import sys
 import torch.nn as nn
+import csv
 
 app = FastAPI()
 
@@ -45,6 +45,23 @@ IMG_SIZE = 1024
 CONF_THRES = 0.05
 TILE = 1140
 STRIDE = int(TILE * 0.8)
+
+# Маппинг номеров классов на названия дефектов
+DEFECT_NAMES = {
+    0: "пора",
+    1: "включение",
+    2: "подрез",
+    3: "прожог",
+    4: "трещина",
+    5: "наплыв",
+    6: "эталон1",
+    7: "эталон2",
+    8: "эталон3",
+    9: "пора-скрытая",
+    10: "утяжина",
+    11: "несплавление",
+    12: "непровар корня",
+}
 
 # Custom preprocessing classes
 class HomomorphicFilter:
@@ -173,6 +190,19 @@ def predict_large_image(image_path: str) -> str:
         header='x1 y1 x2 y2 conf cls',
         comments=''
     )
+
+    # --- Новый блок: создание CSV-отчёта ---
+    csv_file = os.path.join(OUTPUT_DIR, "report.csv")
+    with open(out_file, "r") as fin, open(csv_file, "w", newline="") as fout:
+        reader = csv.DictReader(fin, delimiter=' ')
+        writer = csv.writer(fout)
+        writer.writerow(["тип деффекта", "x1", "y1", "x2", "y2"])
+        for row in reader:
+            defect_type = DEFECT_NAMES.get(int(row["cls"]), str(row["cls"]))
+            x1, y1, x2, y2 = row["x1"], row["y1"], row["x2"], row["y2"]
+            writer.writerow([defect_type, x1, y1, x2, y2])
+    # --- Конец нового блока ---
+
     return out_file
 
 @app.post("/predict")

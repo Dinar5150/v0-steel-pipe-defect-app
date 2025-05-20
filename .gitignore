@@ -25,3 +25,27 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Python virtual environments
+venv/
+.env/
+.venv/
+
+# Node.js
+node_modules/
+
+# PyTorch/YOLO/Ultralytics outputs
+outputs/
+runs/
+*.pt
+
+# Jupyter/IPython
+.ipynb_checkpoints/
+
+# OS/system files
+.DS_Store
+Thumbs.db
+
+# VSCode/IDE
+.vscode/
+.idea/
