@@ -6,20 +6,28 @@ import { Button } from "@/components/ui/button"
 import { UploadIcon } from "lucide-react"
 import { useLanguage } from "@/context/language-context"
 import { motion } from "framer-motion"
+import { analyzeImage } from "@/lib/api"
 
 interface UploadProps {
-  onImageUpload: (imageUrl: string) => void
+  onImageUpload: (imageUrl: string, predictions: any) => void
 }
 
 export function Upload({ onImageUpload }: UploadProps) {
   const { t } = useLanguage()
 
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
+    async (acceptedFiles: File[]) => {
       if (acceptedFiles.length > 0) {
         const file = acceptedFiles[0]
         const imageUrl = URL.createObjectURL(file)
-        onImageUpload(imageUrl)
+        
+        try {
+          const predictions = await analyzeImage(file)
+          onImageUpload(imageUrl, predictions)
+        } catch (error) {
+          console.error('Error analyzing image:', error)
+          // Здесь можно добавить обработку ошибок, например показать уведомление пользователю
+        }
       }
     },
     [onImageUpload]

@@ -8,25 +8,16 @@ import { RefreshCw, ZoomIn, ZoomOut, Download, Edit, Check, Trash2, Plus, Undo, 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useLanguage } from "@/context/language-context"
-
-// Updated Segment interface to use x0, y0, x1, y1 coordinates
-interface Segment {
-  id: number
-  x0: number
-  y0: number
-  x1: number
-  y1: number
-  label: string
-}
+import { PredictionResult } from "@/lib/api"
 
 interface ResultsProps {
   image: string
   isAnalyzing: boolean
-  results: any | null
+  results: PredictionResult[] | null
   onReset: () => void
   isEditMode?: boolean
   onToggleEditMode?: () => void
-  onSegmentsChange?: (segments: Segment[]) => void
+  onSegmentsChange?: (segments: PredictionResult[]) => void
 }
 
 export function Results({
@@ -58,7 +49,7 @@ export function Results({
   const [editingLabelText, setEditingLabelText] = useState("")
 
   // For undo/redo functionality
-  const [history, setHistory] = useState<Segment[][]>([])
+  const [history, setHistory] = useState<PredictionResult[][]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
 
   // For image panning
@@ -72,37 +63,6 @@ export function Results({
   const segmentsContainerRef = useRef<HTMLDivElement>(null)
 
   const { t, toggleLanguage, language } = useLanguage()
-
-  // Convert legacy segments (if any) to the new format
-  useEffect(() => {
-    if (results?.segments && history.length === 0) {
-      // Check if we need to convert from the old format
-      const convertedSegments = results.segments.map((segment: any) => {
-        // If segment already has x0, y0, x1, y1 format, return as is
-        if ("x0" in segment && "y0" in segment && "x1" in segment && "y1" in segment) {
-          return segment
-        }
-
-        // Convert from x, y, width, height to x0, y0, x1, y1
-        return {
-          id: segment.id,
-          x0: segment.x,
-          y0: segment.y,
-          x1: segment.x + segment.width,
-          y1: segment.y + segment.height,
-          label: segment.label,
-        }
-      })
-
-      // Update the results with converted segments
-      if (onSegmentsChange) {
-        onSegmentsChange(convertedSegments)
-      }
-
-      setHistory([convertedSegments])
-      setHistoryIndex(0)
-    }
-  }, [results, history, onSegmentsChange])
 
   // Update image dimensions when the image loads
   useEffect(() => {
@@ -186,7 +146,7 @@ export function Results({
   }, [zoom, position])
 
   // Add a new state to history
-  const addToHistory = (newSegments: Segment[]) => {
+  const addToHistory = (newSegments: PredictionResult[]) => {
     // If we're not at the end of the history, truncate it
     const newHistory = history.slice(0, historyIndex + 1)
     newHistory.push([...newSegments])
@@ -237,9 +197,8 @@ export function Results({
     const relativeY = containerCenterY - wrapperCenterY
 
     // Calculate new zoom level with limits
-    // Use a linear scale for zooming (multiply by 1.2 for zoom in, divide by 1.2 for zoom out)
     const zoomFactor = zoomDelta > 0 ? 1.2 : 1/1.2
-    const newZoom = Math.min(Math.max(zoom * zoomFactor, 0.5), 30) // Increased max zoom to 30x
+    const newZoom = Math.min(Math.max(zoom * zoomFactor, 0.5), 30)
 
     // Calculate how the position should change to keep the window center over the same image point
     const newPosition = {
@@ -252,118 +211,28 @@ export function Results({
     setPosition(newPosition)
   }
 
-  const handleZoomIn = () => {
-    zoomFromWindowCenter(1) // Positive value for zoom in
-  }
+  const handleZoomIn = () => zoomFromWindowCenter(1)
+  const handleZoomOut = () => zoomFromWindowCenter(-1)
 
-  const handleZoomOut = () => {
-    zoomFromWindowCenter(-1) // Negative value for zoom out
-  }
-
-  // Handle mouse down event to start dragging
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Allow panning even if a segment is selected
-    // Only block if edit mode and mouse down is on a segment or handle
-    if (isEditMode && selectedSegment !== null) {
-      // Check if the click is on a handle or segment
-      // If so, do not start panning
-      // Otherwise, allow panning
-      const target = e.target as HTMLElement;
-      if (
-        target.closest('.segment-handle') ||
-        target.closest('.segment-box')
-      ) {
-        return;
-      }
-    }
-    setIsDragging(true)
-    setDragStart({
-      x: e.clientX - position.x,
-      y: e.clientY - position.y,
-    })
-  }
-
-  // Convert between screen coordinates and image coordinates
-  const screenToImageCoords = (screenX: number, screenY: number) => {
-    if (!imageRef.current || !imageContainerRef.current) {
-      return { x: 0, y: 0 }
-    }
-
-    const containerRect = imageContainerRef.current.getBoundingClientRect()
-    const imgRect = imageRef.current.getBoundingClientRect()
-
-    // Calculate position relative to the container with high precision
-    const relativeX = screenX - containerRect.left - position.x
-    const relativeY = screenY - containerRect.top - position.y
-
-    // Account for zoom with maximum precision
-    const zoomedX = relativeX / zoom
-    const zoomedY = relativeY / zoom
-
-    // Calculate position relative to the image element
-    const imgCenterX = imgRect.width / (2 * zoom)
-    const imgCenterY = imgRect.height / (2 * zoom)
-
-    // Calculate the offset from the center of the image
-    const offsetX = zoomedX - imgCenterX
-    const offsetY = zoomedY - imgCenterY
-
-    // Convert to image natural coordinates with maximum precision
-    const scaleX = (imageDimensions.width / imgRect.width) * zoom
-    const scaleY = (imageDimensions.height / imgRect.height) * zoom
-
-    return {
-      x: imageDimensions.width / 2 + offsetX * scaleX,
-      y: imageDimensions.height / 2 + offsetY * scaleY,
+    if (e.button === 0) { // Left click
+      setIsDragging(true)
+      setDragStart({
+        x: e.clientX - position.x,
+        y: e.clientY - position.y,
+      })
     }
   }
 
-  // Ensure segment stays within image boundaries
-  const constrainSegmentToImage = (segment: Segment): Segment => {
-    if (imageDimensions.width === 0 || imageDimensions.height === 0) {
-      return segment
-    }
-
-    let { x0, y0, x1, y1 } = segment
-
-    // Ensure minimum size (20px in image coordinates)
-    const minSize = 20
-
-    // Constrain to image boundaries while maintaining minimum size
-    x0 = Math.max(0, Math.min(x0, imageDimensions.width - minSize))
-    y0 = Math.max(0, Math.min(y0, imageDimensions.height - minSize))
-    x1 = Math.max(minSize, Math.min(x1, imageDimensions.width))
-    y1 = Math.max(minSize, Math.min(y1, imageDimensions.height))
-
-    // Ensure minimum size is maintained
-    if (x1 - x0 < minSize) {
-      if (x1 >= imageDimensions.width) {
-        x0 = x1 - minSize
-      } else {
-        x1 = x0 + minSize
-      }
-    }
-    if (y1 - y0 < minSize) {
-      if (y1 >= imageDimensions.height) {
-        y0 = y1 - minSize
-      } else {
-        y1 = y0 + minSize
-      }
-    }
-
-    return { ...segment, x0, y0, x1, y1 }
-  }
-
-  // Handle mouse move event for dragging
   const handleMouseMove = (e: React.MouseEvent) => {
     if (isEditMode) {
       // Handle segment dragging or resizing
-      if (isDraggingSegment && selectedSegment !== null && results?.segments) {
+      if (isDraggingSegment && selectedSegment !== null && results) {
         const imageCoords = screenToImageCoords(e.clientX, e.clientY)
         const mouseX = imageCoords.x
         const mouseY = imageCoords.y
 
-        const updatedSegments = results.segments.map((segment: Segment) => {
+        const updatedSegments = results.map((segment: PredictionResult) => {
           if (segment.id === selectedSegment) {
             let updatedSegment = { ...segment }
 
@@ -405,15 +274,13 @@ export function Results({
               // Create the updated segment
               updatedSegment = {
                 ...segment,
-                x0: newX0,
-                y0: newY0,
                 x1: newX1,
                 y1: newY1,
               }
             } else {
               // Moving logic
-              const width = segment.x1 - segment.x0
-              const height = segment.y1 - segment.y0
+              const width = segment.x1 - segment.x1
+              const height = segment.y1 - segment.y1
               // Use floating point for smooth movement
               let newX0 = mouseX - dragOffset.x
               let newY0 = mouseY - dragOffset.y
@@ -426,8 +293,6 @@ export function Results({
 
               updatedSegment = {
                 ...segment,
-                x0: newX0,
-                y0: newY0,
                 x1: newX0 + width,
                 y1: newY0 + height,
               }
@@ -459,28 +324,25 @@ export function Results({
     })
   }
 
-  // Handle mouse up event to stop dragging
   const handleMouseUp = () => {
     // If we were dragging or resizing a segment, add the current state to history
-    if (isDraggingSegment && results?.segments) {
-      addToHistory([...results.segments])
+    if (isDraggingSegment && results) {
+      addToHistory([...results])
     }
 
     setIsDragging(false)
     setIsDraggingSegment(false)
     setResizeHandle(null)
     setResizeStartData(null)
-    // Remove scroll restore
   }
 
-  // Handle mouse enter/leave for disabling page scroll
   const handleMouseEnter = () => {
     setIsHovering(true)
   }
 
-  // Handle mouse leave for disabling page scroll
   const handleMouseLeave = () => {
     setIsHovering(false)
+    setIsDragging(false)
   }
 
   // Handle container click to deselect segment when clicking outside
@@ -512,98 +374,90 @@ export function Results({
     setSelectedSegment(segmentId)
     setIsDraggingSegment(true)
 
-    const segment = results.segments.find((s: Segment) => s.id === segmentId)
+    const segment = results?.find((s: PredictionResult) => s.id === segmentId)
     if (!segment) return
 
     // Get mouse position in image coordinates
     const imageCoords = screenToImageCoords(e.clientX, e.clientY)
 
     setDragOffset({
-      x: imageCoords.x - segment.x0,
-      y: imageCoords.y - segment.y0,
+      x: imageCoords.x - segment.x1,
+      y: imageCoords.y - segment.y1,
     })
   }
 
-  // Handle resize handle drag start
-  const handleResizeStart = (e: React.MouseEvent, segmentId: number, handle: string) => {
-    if (!isEditMode) return
-    e.stopPropagation()
+  // Convert between screen coordinates and image coordinates
+  const screenToImageCoords = (screenX: number, screenY: number) => {
+    if (!imageRef.current || !imageContainerRef.current) {
+      return { x: 0, y: 0 }
+    }
 
-    setSelectedSegment(segmentId)
-    setIsDraggingSegment(true)
-    setResizeHandle(handle)
+    const containerRect = imageContainerRef.current.getBoundingClientRect()
+    const imgRect = imageRef.current.getBoundingClientRect()
 
-    const segment = results.segments.find((s: Segment) => s.id === segmentId)
-    if (!segment) return
+    // Calculate position relative to the container with high precision
+    const relativeX = screenX - containerRect.left - position.x
+    const relativeY = screenY - containerRect.top - position.y
 
-    // Get mouse position in image coordinates
-    const imageCoords = screenToImageCoords(e.clientX, e.clientY)
+    // Account for zoom with maximum precision
+    const zoomedX = relativeX / zoom
+    const zoomedY = relativeY / zoom
 
-    // Store the initial segment data and mouse position
-    setResizeStartData({
-      x0: segment.x0,
-      y0: segment.y0,
-      x1: segment.x1,
-      y1: segment.y1,
-      mouseX: imageCoords.x,
-      mouseY: imageCoords.y,
-    })
+    // Calculate position relative to the image element
+    const imgCenterX = imgRect.width / (2 * zoom)
+    const imgCenterY = imgRect.height / (2 * zoom)
+
+    // Calculate the offset from the center of the image
+    const offsetX = zoomedX - imgCenterX
+    const offsetY = zoomedY - imgCenterY
+
+    // Convert to image natural coordinates with maximum precision
+    const scaleX = (imageDimensions.width / imgRect.width) * zoom
+    const scaleY = (imageDimensions.height / imgRect.height) * zoom
+
+    return {
+      x: imageDimensions.width / 2 + offsetX * scaleX,
+      y: imageDimensions.height / 2 + offsetY * scaleY,
+    }
   }
 
-  // Handle adding a new segment
-  const handleAddSegment = () => {
-    if (!results || !onSegmentsChange || !imageContainerRef.current || !imageRef.current) return;
+  // Ensure segment stays within image boundaries
+  const constrainSegmentToImage = (segment: PredictionResult): PredictionResult => {
+    if (imageDimensions.width === 0 || imageDimensions.height === 0) {
+      return segment
+    }
 
-    // Get container and image info
-    const containerRect = imageContainerRef.current.getBoundingClientRect();
-    const imgRect = imageRef.current.getBoundingClientRect();
+    let { x1, y1 } = segment
 
-    // Center of the container in container coordinates
-    const containerCenterX = containerRect.width / 2;
-    const containerCenterY = containerRect.height / 2;
+    // Ensure minimum size (20px in image coordinates)
+    const minSize = 20
 
-    // Account for pan and zoom to get image coordinates
-    const imageDisplayWidth = imgRect.width;
-    const imageDisplayHeight = imgRect.height;
-    const imageCenterX = imageDisplayWidth / 2;
-    const imageCenterY = imageDisplayHeight / 2;
+    // Constrain to image boundaries while maintaining minimum size
+    x1 = Math.max(minSize, Math.min(x1, imageDimensions.width))
+    y1 = Math.max(minSize, Math.min(y1, imageDimensions.height))
 
-    const xOnImage = (containerCenterX - imageCenterX - position.x) / zoom + imageDimensions.width / 2;
-    const yOnImage = (containerCenterY - imageCenterY - position.y) / zoom + imageDimensions.height / 2;
+    // Ensure minimum size is maintained
+    if (x1 - segment.x1 < minSize) {
+      if (x1 >= imageDimensions.width) {
+        x1 = imageDimensions.width - minSize
+      } else {
+        x1 = segment.x1 + minSize
+      }
+    }
+    if (y1 - segment.y1 < minSize) {
+      if (y1 >= imageDimensions.height) {
+        y1 = imageDimensions.height - minSize
+      } else {
+        y1 = segment.y1 + minSize
+      }
+    }
 
-    // Use a larger fixed size in image coordinates
-    const segW = 200;
-    const segH = 200;
-
-    const newId = Math.max(0, ...results.segments.map((s: Segment) => s.id)) + 1;
-    const newSegment: Segment = {
-      id: newId,
-      x0: xOnImage - segW / 2,
-      y0: yOnImage - segH / 2,
-      x1: xOnImage + segW / 2,
-      y1: yOnImage + segH / 2,
-      label: t("new.defect")
-    };
-
-    const newSegments = [...results.segments, newSegment];
-    onSegmentsChange(newSegments);
-    addToHistory(newSegments);
-    setSelectedSegment(newId);
-  }
-
-  // Handle deleting a segment
-  const handleDeleteSegment = () => {
-    if (!results || !onSegmentsChange || selectedSegment === null) return
-
-    const updatedSegments = results.segments.filter((s: Segment) => s.id !== selectedSegment)
-    onSegmentsChange(updatedSegments)
-    addToHistory(updatedSegments)
-    setSelectedSegment(null)
+    return { ...segment, x1, y1 }
   }
 
   // Handle image download with defect markers
   const handleSaveImage = () => {
-    if (!image || !results?.segments) return
+    if (!image || !results) return
 
     // Create a canvas element to draw the image and defect markers
     const canvas = document.createElement("canvas")
@@ -628,9 +482,9 @@ export function Results({
       let leftExtension = PADDING
 
       // Check each segment to see if its label extends beyond the image boundaries
-      results.segments.forEach((segment: any) => {
-        const x = segment.x0
-        const y = segment.y0
+      results.forEach((segment: PredictionResult) => {
+        const x = segment.x1
+        const y = segment.y1
 
         // Set font to measure text width
         ctx.font = `bold ${FONT_SIZE}px Arial`
@@ -677,11 +531,11 @@ export function Results({
       ctx.lineWidth = 2
 
       // Draw each defect marker
-      results.segments.forEach((segment: any) => {
-        const x = segment.x0 + leftExtension
-        const y = segment.y0 + topExtension
-        const width = segment.x1 - segment.x0
-        const height = segment.y1 - segment.y0
+      results.forEach((segment: PredictionResult) => {
+        const x = segment.x1 + leftExtension
+        const y = segment.y1 + topExtension
+        const width = segment.x1 - segment.x1
+        const height = segment.y1 - segment.y1
 
         // Draw rectangle
         ctx.beginPath()
@@ -734,19 +588,19 @@ export function Results({
 
   // Update history when segments change (except during drag/resize)
   useEffect(() => {
-    if (results?.segments && !isDraggingSegment) {
+    if (results && !isDraggingSegment) {
       // Only add to history if the segments have actually changed
-      if (history.length === 0 || JSON.stringify(history[historyIndex]) !== JSON.stringify(results.segments)) {
-        addToHistory([...results.segments]);
+      if (history.length === 0 || JSON.stringify(history[historyIndex]) !== JSON.stringify(results)) {
+        addToHistory([...results]);
       }
     }
-  }, [results?.segments]);
+  }, [results]);
 
   // Add event listeners for mouse up outside the component
   useEffect(() => {
     const handleGlobalMouseUp = () => {
-      if (isDraggingSegment && results?.segments) {
-        addToHistory([...results.segments])
+      if (isDraggingSegment && results) {
+        addToHistory([...results])
       }
 
       setIsDragging(false)
@@ -780,9 +634,9 @@ export function Results({
 
   // Handle label edit save
   const handleLabelSave = (segmentId: number) => {
-    if (!results?.segments || editingLabel === null) return
+    if (!results || editingLabel === null) return
 
-    const updatedSegments = results.segments.map((segment: Segment) => {
+    const updatedSegments = results.map((segment: PredictionResult) => {
       if (segment.id === segmentId) {
         return { ...segment, label: editingLabelText }
       }
@@ -880,21 +734,18 @@ export function Results({
                     <Redo className="h-4 w-4" />
                   </Button>
 
-                  <Button variant="outline" size="sm" onClick={handleAddSegment}>
-                    <Plus className="h-4 w-4 mr-1" /> {t("add")}
+                  <Button variant="outline" size="sm" onClick={handleSaveImage}>
+                    <Download className="h-4 w-4 mr-1" /> {t("save")}
                   </Button>
 
                   {selectedSegment !== null && (
-                    <Button variant="outline" size="sm" onClick={handleDeleteSegment} className="text-red-500">
+                    <Button variant="outline" size="sm" onClick={() => onSegmentsChange(results.filter((s: PredictionResult) => s.id !== selectedSegment))} className="text-red-500">
                       <Trash2 className="h-4 w-4 mr-1" /> {t("delete")}
                     </Button>
                   )}
                 </>
               )}
             </div>
-            <Button variant="outline" size="sm" onClick={handleSaveImage}>
-              <Download className="h-4 w-4 mr-2" /> {t("save")}
-            </Button>
           </div>
 
           <div
@@ -943,7 +794,7 @@ export function Results({
                       draggable="false" // Prevent default image dragging
                     />
 
-                    {results && results.segments && (
+                    {results && (
                       <div
                         ref={segmentsContainerRef}
                         className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none"
@@ -952,19 +803,19 @@ export function Results({
                           height: imageRef.current?.height || 0,
                         }}
                       >
-                        {results.segments.map((segment: Segment) => {
+                        {results.map((segment: PredictionResult) => {
                           const isSelected = selectedSegment === segment.id
 
                           // Calculate position as percentage of image dimensions
-                          const percentX0 = (segment.x0 / imageDimensions.width) * 100
-                          const percentY0 = (segment.y0 / imageDimensions.height) * 100
+                          const percentX0 = (segment.x1 / imageDimensions.width) * 100
+                          const percentY0 = (segment.y1 / imageDimensions.height) * 100
                           const percentX1 = (segment.x1 / imageDimensions.width) * 100
                           const percentY1 = (segment.y1 / imageDimensions.height) * 100
 
                           // For label: position above and outside the box, always centered horizontally
                           const labelOffset = 8 // px above the box in image coordinates
-                          const labelTop = ((segment.y0 - labelOffset) / imageDimensions.height) * 100
-                          const labelLeft = (segment.x0 / imageDimensions.width) * 100
+                          const labelTop = ((segment.y1 - labelOffset) / imageDimensions.height) * 100
+                          const labelLeft = (segment.x1 / imageDimensions.width) * 100
 
                           return (
                             <div
@@ -1118,16 +969,6 @@ export function Results({
               </div>
             )}
           </div>
-
-          {/* Move zoom controls outside the image but inside the container */}
-          <div className="absolute bottom-6 right-6 flex flex-col gap-2 z-10">
-            <Button variant="outline" size="sm" onClick={handleZoomIn} className="bg-white/80 hover:bg-white">
-              <ZoomIn className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleZoomOut} className="bg-white/80 hover:bg-white">
-              <ZoomOut className="h-4 w-4" />
-            </Button>
-          </div>
         </div>
 
         {/* Analysis results area */}
@@ -1149,7 +990,7 @@ export function Results({
               <div>
                 <p className="text-sm text-gray-500 mb-2">{t("detected.defects")}</p>
                 <ul className="space-y-3">
-                  {results.segments.map((segment: Segment) => (
+                  {results.map((segment: PredictionResult) => (
                     <motion.li
                       key={segment.id}
                       initial={{ x: -20, opacity: 0 }}

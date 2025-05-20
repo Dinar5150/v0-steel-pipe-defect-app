@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { History, Bug } from "lucide-react"
 import { useLanguage } from "@/context/language-context"
 import { useHistory } from "@/context/history-context"
+import { PredictionResult } from "@/lib/api"
 
 export default function Home() {
   const router = useRouter()
@@ -20,7 +21,7 @@ export default function Home() {
   const { addToHistory, updateHistoryItem } = useHistory()
   const [image, setImage] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [results, setResults] = useState<any | null>(null)
+  const [results, setResults] = useState<PredictionResult[] | null>(null)
   const [showDebug, setShowDebug] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
 
@@ -49,20 +50,14 @@ export default function Home() {
     };
   }, []);
 
-  const handleImageUpload = (imageUrl: string) => {
+  const handleImageUpload = (imageUrl: string, predictions: PredictionResult[]) => {
     setImage(imageUrl)
     setIsAnalyzing(true)
 
-    // Simulate analysis process
-    setTimeout(() => {
-      setIsAnalyzing(false)
-      const analysisResults = {
-        segments: []
-      }
-
-      setResults(analysisResults)
-      addToHistory(imageUrl, analysisResults)
-    }, 2000)
+    // Process predictions
+    setResults(predictions)
+    setIsAnalyzing(false)
+    addToHistory(imageUrl, predictions)
   }
 
   const resetAnalysis = () => {
@@ -85,12 +80,9 @@ export default function Home() {
     }
   }
 
-  const handleSegmentsChange = (updatedSegments: any[]) => {
+  const handleSegmentsChange = (updatedSegments: PredictionResult[]) => {
     if (results) {
-      setResults({
-        ...results,
-        segments: updatedSegments,
-      })
+      setResults(updatedSegments)
     }
   }
 
@@ -139,7 +131,7 @@ export default function Home() {
                 />
 
                 {showDebug && results && !isAnalyzing && (
-                  <DebugPanel segments={results.segments} onSegmentsChange={handleSegmentsChange} />
+                  <DebugPanel segments={results} onSegmentsChange={handleSegmentsChange} />
                 )}
               </>
             )}
