@@ -44,6 +44,7 @@ type TranslationKeys =
   | "history.edited"
   | "history.search.placeholder"
   | "back"
+  | "download_report"
 
 type Translations = {
   [key in Language]: {
@@ -97,7 +98,8 @@ const translations: Translations = {
     "history.view.details": "View Details",
     "history.edited": "Edited",
     "history.search.placeholder": "Search by defect type...",
-    "back": "Back"
+    "back": "Back",
+    "download_report": "Download CSV report"
   },
   ru: {
     "analyze.another": "Проанализировать другое изображение",
@@ -138,7 +140,8 @@ const translations: Translations = {
     "history.view.details": "Подробнее",
     "history.edited": "Изменено",
     "history.search.placeholder": "Поиск по типу дефекта...",
-    "back": "Назад"
+    "back": "Назад",
+    "download_report": "Скачать CSV-отчёт"
   }
 }
 

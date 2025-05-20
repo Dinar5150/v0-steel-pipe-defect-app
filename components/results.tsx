@@ -720,6 +720,19 @@ export function Results({
                 </Button>
               )}
 
+              {results && !isAnalyzing && (
+                <Button asChild variant="outline" size="sm">
+                  <a
+                    href="http://localhost:8000/download_report"
+                    download
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {t('download_report')} {/* <-- Используем функцию t() */}
+                  </a>
+                </Button>
+              )}
+
               {isEditMode && (
                 <>
                   <Button variant="outline" size="sm" onClick={handleUndo} disabled={historyIndex <= 0}>

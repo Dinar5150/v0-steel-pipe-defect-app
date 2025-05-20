@@ -233,11 +233,17 @@ def read_root():
 # Монтируем папку static для отдачи файлов
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-class C3k2(nn.Module):
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-    def forward(self, x):
-        return x
+# Эндпоинт для скачивания CSV-отчёта
+@app.get("/download_report")
+def download_report():
+    csv_path = os.path.join(OUTPUT_DIR, "report.csv")
+    # Проверяем существование файла перед отправкой
+    if not os.path.exists(csv_path):
+        # Если файл не существует, возвращаем 404
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=404, content={"message": "Report not found. Please run a prediction first."})
+
+    return FileResponse(csv_path, media_type='text/csv', filename='report.csv')
 
 
 torch.serialization.add_safe_globals([
