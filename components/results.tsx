@@ -1,6 +1,6 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -64,6 +64,9 @@ export function Results({
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
   const [hoveredAddButton, setHoveredAddButton] = useState<number | null>(null)
   const [imageElement, setImageElement] = useState<HTMLImageElement | null>(null)
+  const [zoomInput, setZoomInput] = useState("100")
+  const [editingLabelId, setEditingLabelId] = useState<string | null>(null)
+  const [editingLabelValue, setEditingLabelValue] = useState("")
 
   // Setup canvas with proper DPI handling
   const setupCanvas = useCallback(() => {
@@ -199,20 +202,6 @@ export function Results({
     )
   }, [])
 
-  // Load image when image prop changes
-  useEffect(() => {
-    if (image) {
-      const img = new Image()
-      img.onload = () => {
-        setImageElement(img)
-        fitImageToCanvas(img)
-      }
-      img.src = image
-    } else {
-      setImageElement(null)
-    }
-  }, [image])
-
   // Draw everything on canvas
   const draw = useCallback(() => {
     const canvas = canvasRef.current
@@ -327,12 +316,31 @@ export function Results({
           const centerX = selection.points.reduce((sum, p) => sum + p.x, 0) / selection.points.length
           const centerY = selection.points.reduce((sum, p) => sum + p.y, 0) / selection.points.length
 
+          // Find the topmost point to position label above the polygon
+          const minY = Math.min(...selection.points.map((p) => p.y))
+          const labelY = minY - 20 / zoom // Position label above the polygon
+
           ctx.font = `${12 / zoom}px Arial`
-          ctx.fillStyle = "#000"
-          ctx.fillRect(centerX - 20 / zoom, centerY - 8 / zoom, 40 / zoom, 16 / zoom)
-          ctx.fillStyle = "#fff"
           ctx.textAlign = "center"
-          ctx.fillText(selection.label, centerX, centerY + 4 / zoom)
+
+          // Measure text to get proper dimensions
+          const textMetrics = ctx.measureText(selection.label)
+          const textWidth = textMetrics.width
+          const textHeight = 12 / zoom
+          const padding = 4 / zoom
+
+          // Draw background with segment color
+          ctx.fillStyle = selection.color
+          ctx.fillRect(
+            centerX - textWidth / 2 - padding,
+            labelY - textHeight - padding,
+            textWidth + padding * 2,
+            textHeight + padding * 2,
+          )
+
+          // Draw text in white for better contrast
+          ctx.fillStyle = "#fff"
+          ctx.fillText(selection.label, centerX, labelY - padding)
         }
 
         ctx.restore()
@@ -383,6 +391,21 @@ export function Results({
     getEdgeMidpoint,
   ])
 
+  // Check if a point is inside a polygon using ray casting algorithm
+  const isPointInPolygon = useCallback((point: Point, polygon: Point[]) => {
+    let inside = false
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      if (
+        polygon[i].y > point.y !== polygon[j].y > point.y &&
+        point.x <
+          ((polygon[j].x - polygon[i].x) * (point.y - polygon[i].y)) / (polygon[j].y - polygon[i].y) + polygon[i].x
+      ) {
+        inside = !inside
+      }
+    }
+    return inside
+  }, [])
+
   // Handle canvas click
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent) => {
@@ -413,15 +436,37 @@ export function Results({
           }
           setCurrentSelection(updatedSelection)
         }
-      } else if (tool === "edit" && selectedSelectionId) {
-        // Check if clicking on an add button
-        const selectedSelection = selections.find((s) => s.id === selectedSelectionId)
-        if (selectedSelection) {
-          const addButtonIndex = getClickedAddButton(canvasCoords, selectedSelection)
-          if (addButtonIndex !== null) {
-            addNodeAtMidpoint(selectedSelectionId, addButtonIndex)
-            return
+      } else if (tool === "edit") {
+        // Check if clicking on an add button first (if a selection is already selected)
+        if (selectedSelectionId) {
+          const selectedSelection = selections.find((s) => s.id === selectedSelectionId)
+          if (selectedSelection) {
+            const addButtonIndex = getClickedAddButton(canvasCoords, selectedSelection)
+            if (addButtonIndex !== null) {
+              addNodeAtMidpoint(selectedSelectionId, addButtonIndex)
+              return
+            }
           }
+        }
+
+        // Check if clicking inside any polygon to select it
+        let clickedSelection: PolygonSelection | null = null
+
+        // Check selections in reverse order (top to bottom) to select the topmost one
+        for (let i = selections.length - 1; i >= 0; i--) {
+          const selection = selections[i]
+          if (selection.isComplete && isPointInPolygon(imageCoords, selection.points)) {
+            clickedSelection = selection
+            break
+          }
+        }
+
+        if (clickedSelection) {
+          // Select the clicked polygon
+          setSelectedSelectionId(clickedSelection.id)
+        } else {
+          // Click was not inside any polygon, deselect current selection
+          setSelectedSelectionId(null)
         }
       }
     },
@@ -436,6 +481,7 @@ export function Results({
       selectedSelectionId,
       getClickedAddButton,
       addNodeAtMidpoint,
+      isPointInPolygon,
     ],
   )
 
@@ -603,6 +649,7 @@ export function Results({
     if (file) {
       const img = new Image()
       img.onload = () => {
+        setImageElement(img)
         // Reset view and fit image with proper aspect ratio
         fitImageToCanvas(img)
         // Clear selections
@@ -647,6 +694,113 @@ export function Results({
     setZoom((prev) => Math.max(prev / 1.2, 0.1))
   }, [])
 
+  const handleZoomInputChange = useCallback((value: string) => {
+    setZoomInput(value)
+    const numValue = Number.parseFloat(value)
+    if (!isNaN(numValue) && numValue > 0 && numValue <= 1000) {
+      setZoom(numValue / 100)
+    }
+  }, [])
+
+  const downloadPNG = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !imageElement) return
+
+    // Create a temporary canvas with the original image dimensions
+    const tempCanvas = document.createElement("canvas")
+    const tempCtx = tempCanvas.getContext("2d")
+    if (!tempCtx) return
+
+    // Set canvas size to match original image
+    tempCanvas.width = imageElement.width
+    tempCanvas.height = imageElement.height
+
+    // Fill with white background
+    tempCtx.fillStyle = "white"
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height)
+
+    // Draw the original image at full size
+    tempCtx.drawImage(imageElement, 0, 0)
+
+    // Draw all completed selections on the full image
+    selections.forEach((selection) => {
+      if (selection.points.length > 0 && selection.isComplete) {
+        tempCtx.strokeStyle = selection.color
+        tempCtx.fillStyle = selection.color + "20"
+        tempCtx.lineWidth = 2
+
+        tempCtx.beginPath()
+        tempCtx.moveTo(selection.points[0].x, selection.points[0].y)
+        selection.points.forEach((point) => {
+          tempCtx.lineTo(point.x, point.y)
+        })
+        tempCtx.closePath()
+        tempCtx.fill()
+        tempCtx.stroke()
+
+        // Draw label
+        if (selection.label) {
+          const centerX = selection.points.reduce((sum, p) => sum + p.x, 0) / selection.points.length
+          const centerY = selection.points.reduce((sum, p) => sum + p.y, 0) / selection.points.length
+
+          // Find the topmost point to position label above the polygon
+          const minY = Math.min(...selection.points.map((p) => p.y))
+          const labelY = minY - 20 // Position label above the polygon
+
+          tempCtx.font = "12px Arial"
+          tempCtx.textAlign = "center"
+
+          // Measure text to get proper dimensions
+          const textMetrics = tempCtx.measureText(selection.label)
+          const textWidth = textMetrics.width
+          const textHeight = 12
+          const padding = 4
+
+          // Draw background with segment color
+          tempCtx.fillStyle = selection.color
+          tempCtx.fillRect(
+            centerX - textWidth / 2 - padding,
+            labelY - textHeight - padding,
+            textWidth + padding * 2,
+            textHeight + padding * 2,
+          )
+
+          // Draw text in white for better contrast
+          tempCtx.fillStyle = "#fff"
+          tempCtx.fillText(selection.label, centerX, labelY - padding)
+        }
+      }
+    })
+
+    // Create download link
+    const link = document.createElement("a")
+    link.download = "segmented-image.png"
+    link.href = tempCanvas.toDataURL("image/png")
+    link.click()
+  }, [imageElement, selections])
+
+  const startEditingLabel = useCallback((selection: PolygonSelection) => {
+    setEditingLabelId(selection.id)
+    setEditingLabelValue(selection.label)
+  }, [])
+
+  const saveEditingLabel = useCallback(() => {
+    if (editingLabelId && editingLabelValue.trim()) {
+      setSelections((prev) =>
+        prev.map((selection) =>
+          selection.id === editingLabelId ? { ...selection, label: editingLabelValue.trim() } : selection,
+        ),
+      )
+    }
+    setEditingLabelId(null)
+    setEditingLabelValue("")
+  }, [editingLabelId, editingLabelValue])
+
+  const cancelEditingLabel = useCallback(() => {
+    setEditingLabelId(null)
+    setEditingLabelValue("")
+  }, [])
+
   // Handle window resize
   const handleResize = useCallback(() => {
     setupCanvas()
@@ -671,6 +825,10 @@ export function Results({
     draw()
   }, [draw])
 
+  useEffect(() => {
+    setZoomInput(Math.round(zoom * 100).toString())
+  }, [zoom])
+
   const handleMouseLeave = useCallback(() => {
     // Stop all dragging operations when mouse leaves canvas
     setIsPanning(false)
@@ -678,6 +836,20 @@ export function Results({
     setEditingNodeIndex(null)
     setHoveredAddButton(null)
   }, [])
+
+  // Load image when image prop changes
+  useEffect(() => {
+    if (image) {
+      const img = new Image()
+      img.onload = () => {
+        setImageElement(img)
+        fitImageToCanvas(img)
+      }
+      img.src = image
+    } else {
+      setImageElement(null)
+    }
+  }, [image])
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -696,6 +868,13 @@ export function Results({
             </Button>
             <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
           </div>
+
+          {image && (
+            <Button onClick={downloadPNG} className="w-full" variant="outline">
+              <Save className="w-4 h-4 mr-2" />
+              Download PNG
+            </Button>
+          )}
 
           <Separator />
 
@@ -722,7 +901,20 @@ export function Results({
               <Button size="sm" variant="outline" onClick={zoomOut}>
                 <ZoomOut className="w-4 h-4" />
               </Button>
-              <span className="text-sm font-mono">{Math.round(zoom * 100)}%</span>
+              <div className="flex items-center gap-1">
+                <Input
+                  type="text"
+                  value={zoomInput}
+                  onChange={(e) => handleZoomInputChange(e.target.value)}
+                  className="w-16 h-8 text-center text-sm"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.currentTarget.blur()
+                    }
+                  }}
+                />
+                <span className="text-sm">%</span>
+              </div>
               <Button size="sm" variant="outline" onClick={zoomIn}>
                 <ZoomIn className="w-4 h-4" />
               </Button>
@@ -767,9 +959,38 @@ export function Results({
                   onClick={() => setSelectedSelectionId(selectedSelectionId === selection.id ? null : selection.id)}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-1">
                       <div className="w-3 h-3 rounded" style={{ backgroundColor: selection.color }} />
-                      <span className="text-sm font-medium">{selection.label}</span>
+                      {editingLabelId === selection.id ? (
+                        <div className="flex items-center gap-1 flex-1" onClick={(e) => e.stopPropagation()}>
+                          <Input
+                            value={editingLabelValue}
+                            onChange={(e) => setEditingLabelValue(e.target.value)}
+                            className="h-6 text-sm flex-1"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                saveEditingLabel()
+                              } else if (e.key === "Escape") {
+                                cancelEditingLabel()
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <Button size="sm" variant="ghost" onClick={saveEditingLabel} className="h-6 w-6 p-0">
+                            <Save className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span
+                          className="text-sm font-medium flex-1 cursor-text"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            startEditingLabel(selection)
+                          }}
+                        >
+                          {selection.label}
+                        </span>
+                      )}
                     </div>
                     <Button
                       size="sm"
