@@ -687,20 +687,59 @@ export function Results({
 
   // Zoom functions
   const zoomIn = useCallback(() => {
-    setZoom((prev) => Math.min(prev * 1.2, 10))
-  }, [])
+    setZoom((prevZoom) => {
+      const newZoom = Math.min(prevZoom * 1.2, 10)
+      if (!canvasRef.current) return newZoom
+      const canvas = canvasRef.current
+      const center = { x: canvas.width / 2 / (window.devicePixelRatio || 1), y: canvas.height / 2 / (window.devicePixelRatio || 1) }
+      // Image coordinates at center before zoom
+      const imageCenter = { x: (center.x - pan.x) / prevZoom, y: (center.y - pan.y) / prevZoom }
+      // New pan to keep imageCenter at canvas center
+      setPan({
+        x: center.x - imageCenter.x * newZoom,
+        y: center.y - imageCenter.y * newZoom,
+      })
+      return newZoom
+    })
+  }, [pan])
 
   const zoomOut = useCallback(() => {
-    setZoom((prev) => Math.max(prev / 1.2, 0.1))
-  }, [])
+    setZoom((prevZoom) => {
+      const newZoom = Math.max(prevZoom / 1.2, 0.1)
+      if (!canvasRef.current) return newZoom
+      const canvas = canvasRef.current
+      const center = { x: canvas.width / 2 / (window.devicePixelRatio || 1), y: canvas.height / 2 / (window.devicePixelRatio || 1) }
+      // Image coordinates at center before zoom
+      const imageCenter = { x: (center.x - pan.x) / prevZoom, y: (center.y - pan.y) / prevZoom }
+      // New pan to keep imageCenter at canvas center
+      setPan({
+        x: center.x - imageCenter.x * newZoom,
+        y: center.y - imageCenter.y * newZoom,
+      })
+      return newZoom
+    })
+  }, [pan])
 
   const handleZoomInputChange = useCallback((value: string) => {
     setZoomInput(value)
     const numValue = Number.parseFloat(value)
     if (!isNaN(numValue) && numValue > 0 && numValue <= 1000) {
-      setZoom(numValue / 100)
+      setZoom((prevZoom) => {
+        const newZoom = numValue / 100
+        if (!canvasRef.current) return newZoom
+        const canvas = canvasRef.current
+        const center = { x: canvas.width / 2 / (window.devicePixelRatio || 1), y: canvas.height / 2 / (window.devicePixelRatio || 1) }
+        // Image coordinates at center before zoom
+        const imageCenter = { x: (center.x - pan.x) / prevZoom, y: (center.y - pan.y) / prevZoom }
+        // New pan to keep imageCenter at canvas center
+        setPan({
+          x: center.x - imageCenter.x * newZoom,
+          y: center.y - imageCenter.y * newZoom,
+        })
+        return newZoom
+      })
     }
-  }, [])
+  }, [pan])
 
   const downloadPNG = useCallback(() => {
     const canvas = canvasRef.current
