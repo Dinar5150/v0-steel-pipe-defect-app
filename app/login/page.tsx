@@ -15,26 +15,25 @@ export default function LoginPage() {
   const { t, language, toggleLanguage } = useLanguage()
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
-  const [error, setError] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
   const [isSignUp, setIsSignUp] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError("")
+    setIsLoading(true)
+    setError(null)
 
-    try {
-      const success = isSignUp 
-        ? await signup(username, password)
-        : await login(username, password)
-      
-      if (success) {
-        router.push("/")
-      } else {
-        setError(t(isSignUp ? "signup.error" : "login.error"))
-      }
-    } catch (err) {
-      setError(t(isSignUp ? "signup.error" : "login.error"))
+    const result = isSignUp 
+      ? await signup(username, password)
+      : await login(username, password)
+    
+    if (result.success) {
+      router.push("/")
+    } else {
+      setError(result.error || t(isSignUp ? "signup.error" : "login.error"))
     }
+    setIsLoading(false)
   }
 
   return (
@@ -76,6 +75,7 @@ export default function LoginPage() {
                 placeholder={t("login.username")}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                disabled={isLoading}
               />
             </div>
             <div>
@@ -91,27 +91,39 @@ export default function LoginPage() {
                 placeholder={t("login.password")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                disabled={isLoading}
               />
             </div>
           </div>
 
           {error && (
-            <div className="text-red-500 text-sm text-center">{error}</div>
+            <div className="text-red-500 text-sm text-center">
+              {error}
+            </div>
           )}
 
           <div className="space-y-4">
             <Button
               type="submit"
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              disabled={isLoading}
             >
-              {t(isSignUp ? "signup.button" : "login.button")}
+              {isLoading ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                t(isSignUp ? "signup.button" : "login.button")
+              )}
             </Button>
             
             <div className="text-center">
               <button
                 type="button"
-                onClick={() => setIsSignUp(!isSignUp)}
+                onClick={() => {
+                  setIsSignUp(!isSignUp)
+                  setError(null)
+                }}
                 className="text-sm text-blue-600 hover:text-blue-500"
+                disabled={isLoading}
               >
                 {t(isSignUp ? "login.switchToLogin" : "login.switchToSignup")}
               </button>

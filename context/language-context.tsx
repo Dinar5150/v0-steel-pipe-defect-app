@@ -67,6 +67,8 @@ type TranslationKeys =
   | "results.add.points"
   | "results.complete.polygon"
   | "results.inference.time"
+  | "auth.required"
+  | "error.analysis"
 
 type Translations = {
   [key in Language]: {
@@ -143,7 +145,9 @@ const translations: Translations = {
     "results.pan.image": "Click and drag to pan the image",
     "results.add.points": "Click to add points, complete polygon in sidebar",
     "results.complete.polygon": "Complete polygon in sidebar",
-    "results.inference.time": "Inference time: {time}s"
+    "results.inference.time": "Inference time: {time}s",
+    "auth.required": "Please sign in to continue",
+    "error.analysis": "Failed to analyze image. Please try again."
   },
   ru: {
     "analyze.another": "Проанализировать другое изображение",
@@ -207,7 +211,9 @@ const translations: Translations = {
     "results.pan.image": "Нажмите и перетащите для перемещения изображения",
     "results.add.points": "Нажмите для добавления точек, завершите полигон в боковой панели",
     "results.complete.polygon": "Завершите полигон в боковой панели",
-    "results.inference.time": "Время обработки: {time}с"
+    "results.inference.time": "Время обработки: {time}с",
+    "auth.required": "Пожалуйста, войдите в систему",
+    "error.analysis": "Не удалось проанализировать изображение. Пожалуйста, попробуйте снова."
   }
 }
 

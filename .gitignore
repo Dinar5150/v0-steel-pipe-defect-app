@@ -49,3 +49,6 @@ Thumbs.db
 # VSCode/IDE
 .vscode/
 .idea/
+
+# backend pycache
+/backend/__pycache__

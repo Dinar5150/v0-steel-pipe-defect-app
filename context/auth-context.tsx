@@ -10,83 +10,131 @@ interface User {
 
 interface AuthContextType {
   user: User | null
-  login: (username: string, password: string) => Promise<boolean>
-  signup: (username: string, password: string) => Promise<boolean>
+  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>
+  signup: (username: string, password: string) => Promise<{ success: boolean; error?: string }>
   logout: () => void
   isLoading: boolean
+  token: string | null
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+const API_URL = 'http://localhost:8000'
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
   // Check for existing session on initial load
   useEffect(() => {
     const storedUser = localStorage.getItem("user")
-    if (storedUser) {
+    const storedToken = localStorage.getItem("token")
+    if (storedUser && storedToken) {
       try {
         setUser(JSON.parse(storedUser))
+        setToken(storedToken)
       } catch (error) {
         console.error("Failed to parse user from localStorage:", error)
         localStorage.removeItem("user")
+        localStorage.removeItem("token")
       }
     }
     setIsLoading(false)
   }, [])
 
-  // Mock login function - in a real app, this would call an API
   const login = async (username: string, password: string) => {
-    // For demo purposes, accept any non-empty username/password
     if (!username || !password) {
-      return false
+      return { success: false, error: "Please enter both username and password" }
     }
 
-    // Simulate API call
-    setIsLoading(true)
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    try {
+      setIsLoading(true)
+      
+      // Create form data for the login request
+      const formData = new FormData()
+      formData.append('username', username)
+      formData.append('password', password)
 
-    const newUser = {
-      id: Date.now().toString(),
-      username,
+      const response = await fetch(`${API_URL}/token`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        return { success: false, error: errorData.detail || 'Login failed' }
+      }
+
+      const data = await response.json()
+      const { access_token } = data
+
+      // Create user object from username
+      const newUser = {
+        id: username, // Using username as ID since we don't have a separate ID
+        username: username,
+      }
+
+      setUser(newUser)
+      setToken(access_token)
+      localStorage.setItem("user", JSON.stringify(newUser))
+      localStorage.setItem("token", access_token)
+      setIsLoading(false)
+      return { success: true }
+    } catch (error) {
+      console.error("Login error:", error)
+      setIsLoading(false)
+      return { success: false, error: "An unexpected error occurred" }
     }
-
-    setUser(newUser)
-    localStorage.setItem("user", JSON.stringify(newUser))
-    setIsLoading(false)
-    return true
   }
 
   const signup = async (username: string, password: string) => {
-    // For demo purposes, accept any non-empty username/password
     if (!username || !password) {
-      return false
+      return { success: false, error: "Please enter both username and password" }
     }
 
-    // Simulate API call
-    setIsLoading(true)
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    try {
+      setIsLoading(true)
+      
+      const response = await fetch(`${API_URL}/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username,
+          password,
+        }),
+      })
 
-    const newUser = {
-      id: Date.now().toString(),
-      username,
+      if (!response.ok) {
+        const errorData = await response.json()
+        return { success: false, error: errorData.detail || 'Registration failed' }
+      }
+
+      // After successful registration, log the user in
+      return await login(username, password)
+    } catch (error) {
+      console.error("Registration error:", error)
+      setIsLoading(false)
+      return { success: false, error: "An unexpected error occurred" }
     }
-
-    setUser(newUser)
-    localStorage.setItem("user", JSON.stringify(newUser))
-    setIsLoading(false)
-    return true
   }
 
   const logout = () => {
     setUser(null)
+    setToken(null)
     localStorage.removeItem("user")
+    localStorage.removeItem("token")
     router.push("/login")
   }
 
-  return <AuthContext.Provider value={{ user, login, signup, logout, isLoading }}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={{ user, login, signup, logout, isLoading, token }}>
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 export function useAuth() {

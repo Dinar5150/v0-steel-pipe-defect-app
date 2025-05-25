@@ -5,8 +5,11 @@ import { useDropzone } from "react-dropzone"
 import { Button } from "@/components/ui/button"
 import { UploadIcon } from "lucide-react"
 import { useLanguage } from "@/context/language-context"
+import { useAuth } from "@/context/auth-context"
 import { motion } from "framer-motion"
 import { analyzeImage } from "@/lib/api"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 interface UploadProps {
   onImageUpload: (imageUrl: string, predictions: any, time: number) => void
@@ -14,6 +17,8 @@ interface UploadProps {
 
 export function Upload({ onImageUpload }: UploadProps) {
   const { t } = useLanguage()
+  const { token } = useAuth()
+  const router = useRouter()
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [elapsedTime, setElapsedTime] = useState(0)
 
@@ -34,6 +39,12 @@ export function Upload({ onImageUpload }: UploadProps) {
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
+      if (!token) {
+        toast.error(t("auth.required"))
+        router.push("/login")
+        return
+      }
+
       if (acceptedFiles.length > 0) {
         const file = acceptedFiles[0]
         const imageUrl = URL.createObjectURL(file)
@@ -41,19 +52,24 @@ export function Upload({ onImageUpload }: UploadProps) {
         try {
           setIsAnalyzing(true)
           const startTime = performance.now()
-          const predictions = await analyzeImage(file)
+          const predictions = await analyzeImage(file, token)
           const endTime = performance.now()
           const inferenceTime = (endTime - startTime) / 1000 // Convert to seconds
           setIsAnalyzing(false)
           onImageUpload(imageUrl, predictions, inferenceTime)
-        } catch (error) {
+        } catch (error: any) {
           console.error('Error analyzing image:', error)
           setIsAnalyzing(false)
-          // Здесь можно добавить обработку ошибок, например показать уведомление пользователю
+          if (error.message === 'Authentication required') {
+            toast.error(t("auth.required"))
+            router.push("/login")
+          } else {
+            toast.error(t("error.analysis"))
+          }
         }
       }
     },
-    [onImageUpload]
+    [onImageUpload, token, router, t]
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
