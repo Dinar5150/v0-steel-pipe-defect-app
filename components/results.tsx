@@ -70,6 +70,7 @@ export function Results({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const wasDraggingRef = useRef(false)
 
   const [selections, setSelections] = useState<PolygonSelection[]>([])
   const [currentSelection, setCurrentSelection] = useState<PolygonSelection | null>(null)
@@ -434,7 +435,10 @@ export function Results({
       e.preventDefault()
 
       // Don't handle clicks if we were dragging
-      if (isDraggingNode || isPanning) return
+      if (wasDraggingRef.current) {
+        wasDraggingRef.current = false
+        return
+      }
 
       const imageCoords = screenToImage(e.clientX, e.clientY)
       const canvasCoords = getCanvasCoordinates(e.clientX, e.clientY)
@@ -498,8 +502,6 @@ export function Results({
       selections,
       screenToImage,
       getCanvasCoordinates,
-      isDraggingNode,
-      isPanning,
       selectedSelectionId,
       getClickedAddButton,
       addNodeAtMidpoint,
@@ -628,11 +630,16 @@ export function Results({
 
     if (e.button !== 0) return // Only handle left mouse button
 
+    // If we were dragging, set the flag to prevent click handling
+    if (isDraggingNode || isPanning) {
+      wasDraggingRef.current = true
+    }
+
     // Stop all dragging operations
     setIsPanning(false)
     setIsDraggingNode(false)
     setEditingNodeIndex(null)
-  }, [])
+  }, [isDraggingNode, isPanning])
 
   // Complete current polygon
   const completePolygon = useCallback(() => {
@@ -932,6 +939,7 @@ export function Results({
     setIsDraggingNode(false)
     setEditingNodeIndex(null)
     setHoveredAddButton(null)
+    wasDraggingRef.current = false
   }, [])
 
   // Load image when image prop changes
@@ -1197,31 +1205,6 @@ export function Results({
               ))}
             </div>
           </div>
-
-          {/* Edit Controls */}
-          {selectedSelectionId && tool === "edit" && (
-            <div>
-              <h3 className="font-semibold mb-2">{t("results.edit.polygon")}</h3>
-              <div className="space-y-2">
-                <div className="space-y-1 text-sm text-gray-600">
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-green-600 rounded-full flex items-center justify-center">
-                      <span className="text-white text-xs">+</span>
-                    </div>
-                    <span>{t("results.add.nodes")}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Minus className="w-4 h-4 text-red-600" />
-                    <span>{t("results.remove.nodes")}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Move className="w-4 h-4 text-blue-600" />
-                    <span>{t("results.move.nodes")}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </CardContent>
       </div>
 
