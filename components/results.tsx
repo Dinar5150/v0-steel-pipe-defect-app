@@ -8,6 +8,7 @@ import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { ZoomIn, ZoomOut, Move, OctagonIcon as Polygon, Edit3, Trash2, Save, Upload, Minus } from "lucide-react"
 import { PredictionResult } from "@/lib/api"
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 
 interface ResultsProps {
   image: string
@@ -35,6 +36,22 @@ interface PolygonSelection {
 type Tool = "pan" | "polygon" | "edit"
 
 const COLORS = ["#ff6b6b", "#4ecdc4", "#45b7d1", "#96ceb4", "#feca57", "#ff9ff3", "#54a0ff", "#5f27cd"]
+
+const SEGMENT_LABELS = [
+  "пора",
+  "включение",
+  "подрез",
+  "прожог",
+  "трещина",
+  "наплыв",
+  "эталон1",
+  "эталон2",
+  "эталон3",
+  "пора-скрытая",
+  "утяжина",
+  "несплавление",
+  "непровар-корня",
+]
 
 export function Results({
   image,
@@ -998,9 +1015,18 @@ export function Results({
             <div>
               <h3 className="font-semibold mb-2">Current Polygon</h3>
               <div className="space-y-2">
-                <Input placeholder="Enter label" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
+                <Select value={newLabel} onValueChange={setNewLabel}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Выберите имя сегмента" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SEGMENT_LABELS.map((label) => (
+                      <SelectItem key={label} value={label}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={completePolygon}>
+                  <Button size="sm" onClick={completePolygon} disabled={!newLabel}>
                     <Save className="w-4 h-4 mr-1" />
                     Complete
                   </Button>
@@ -1032,20 +1058,17 @@ export function Results({
                       <div className="w-3 h-3 rounded" style={{ backgroundColor: selection.color }} />
                       {editingLabelId === selection.id ? (
                         <div className="flex items-center gap-1 flex-1" onClick={(e) => e.stopPropagation()}>
-                          <Input
-                            value={editingLabelValue}
-                            onChange={(e) => setEditingLabelValue(e.target.value)}
-                            className="h-6 text-sm flex-1"
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                saveEditingLabel()
-                              } else if (e.key === "Escape") {
-                                cancelEditingLabel()
-                              }
-                            }}
-                            autoFocus
-                          />
-                          <Button size="sm" variant="ghost" onClick={saveEditingLabel} className="h-6 w-6 p-0">
+                          <Select value={editingLabelValue} onValueChange={setEditingLabelValue}>
+                            <SelectTrigger className="h-6 text-sm flex-1">
+                              <SelectValue placeholder="Выберите имя сегмента" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SEGMENT_LABELS.map((label) => (
+                                <SelectItem key={label} value={label}>{label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button size="sm" variant="ghost" onClick={saveEditingLabel} className="h-6 w-6 p-0" disabled={!editingLabelValue}>
                             <Save className="w-3 h-3" />
                           </Button>
                         </div>
