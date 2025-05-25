@@ -1066,10 +1066,13 @@ export function Results({
 
           {image && (
             <>
-              <Button onClick={downloadPNG} className="w-full mb-2" variant="outline">
-                <Save className="w-4 h-4 mr-2" />
-                {t("results.image.report")}
-              </Button>
+              {/*
+                The download image report button was disabled due to MinIO CORS problems.
+                <Button onClick={downloadPNG} className="w-full mb-2" variant="outline">
+                  <Save className="w-4 h-4 mr-2" />
+                  {t("results.image.report")}
+                </Button>
+              */}
               <Button onClick={downloadExcelReport} className="w-full" variant="outline">
                 <Save className="w-4 h-4 mr-2" />
                 {t("results.excel.report")}
@@ -1134,6 +1137,8 @@ export function Results({
               <Button size="sm" variant="outline" onClick={zoomIn}>
                 <ZoomIn className="w-4 h-4" />
               </Button>
+            </div>
+            <div className="mt-2">
               <Button size="sm" variant="outline" onClick={() => fitImageToCanvas()}>
                 {t("results.fit")}
               </Button>
