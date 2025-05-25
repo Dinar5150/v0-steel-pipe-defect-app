@@ -11,6 +11,30 @@ export interface PredictionResult {
   label: string;
 }
 
+export interface SegmentResponse {
+  id: number;
+  original_url: string;
+  mask_text: string;
+  report_url: string;
+  created_at: string;
+}
+
+const CLASS_NAMES = [
+  "пора",
+  "включение",
+  "подрез",
+  "прожог",
+  "трещина",
+  "наплыв",
+  "эталон1",
+  "эталон2",
+  "эталон3",
+  "пора-скрытая",
+  "утяжина",
+  "несплавление",
+  "непровар корня"
+];
+
 // Helper function to get auth headers
 const getAuthHeaders = (token: string | null) => {
   const headers: Record<string, string> = {
@@ -22,7 +46,45 @@ const getAuthHeaders = (token: string | null) => {
   return headers;
 };
 
-export async function analyzeImage(imageFile: File, token: string | null): Promise<PredictionResult[]> {
+// Helper function to decode mask text into segments
+const decodeMaskText = (maskText: string): PredictionResult[] => {
+  const segments: PredictionResult[] = [];
+  const lines = maskText.split('\n');
+  
+  lines.forEach((line, index) => {
+    const parts = line.trim().split(' ');
+    if (parts.length < 3) return; // Skip invalid lines
+    
+    const classId = parseInt(parts[0]);
+    const points = parts.slice(1).map(Number);
+    
+    // Calculate bounding box from points
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let i = 0; i < points.length; i += 2) {
+      const x = points[i];
+      const y = points[i + 1];
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+    
+    segments.push({
+      id: index + 1,
+      x1: minX,
+      y1: minY,
+      x2: maxX,
+      y2: maxY,
+      conf: 1.0, // Since we don't have confidence in the mask text
+      cls: classId,
+      label: CLASS_NAMES[classId] || `Unknown ${classId}`
+    });
+  });
+  
+  return segments;
+};
+
+export async function analyzeImage(imageFile: File, token: string | null): Promise<{ predictions: PredictionResult[], originalUrl: string }> {
   const formData = new FormData();
   formData.append('file', imageFile);
 
@@ -42,17 +104,13 @@ export async function analyzeImage(imageFile: File, token: string | null): Promi
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const data = await response.json();
-    return data.predictions.map((pred: any, index: number) => ({
-      id: index + 1,
-      x1: pred.x1,
-      y1: pred.y1,
-      x2: pred.x2,
-      y2: pred.y2,
-      conf: pred.confidence,
-      cls: pred.class,
-      label: pred.label || `Defect ${index + 1}`
-    }));
+    const data: SegmentResponse = await response.json();
+    const predictions = decodeMaskText(data.mask_text);
+    
+    return {
+      predictions,
+      originalUrl: data.original_url
+    };
   } catch (error) {
     console.error('Error analyzing image:', error);
     throw error;

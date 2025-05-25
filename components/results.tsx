@@ -1016,6 +1016,31 @@ export function Results({
     XLSX.writeFile(wb, "report.xlsx")
   }, [imageElement, selections])
 
+  // Add this useEffect after the state declarations
+  useEffect(() => {
+    if (results && results.length > 0) {
+      // Convert PredictionResult[] to PolygonSelection[]
+      const newSelections = results.map((result, idx) => {
+        // If you want to display as bounding boxes, use the corners
+        return {
+          id: `${result.id}`,
+          points: [
+            { x: result.x1, y: result.y1 },
+            { x: result.x2, y: result.y1 },
+            { x: result.x2, y: result.y2 },
+            { x: result.x1, y: result.y2 },
+          ],
+          label: result.label,
+          color: COLORS[idx % COLORS.length],
+          isComplete: true,
+        }
+      })
+      setSelections(newSelections)
+    } else {
+      setSelections([])
+    }
+  }, [results])
+
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Left Panel */}

@@ -53,11 +53,8 @@ export default function Home() {
 
   const handleImageUpload = (imageUrl: string, predictions: PredictionResult[], time: number) => {
     setImage(imageUrl)
-    setIsAnalyzing(true)
-    setInferenceTime(time)
-
-    // Process predictions
     setResults(predictions)
+    setInferenceTime(time)
     setIsAnalyzing(false)
     addToHistory(imageUrl, predictions)
   }

@@ -47,16 +47,15 @@ export function Upload({ onImageUpload }: UploadProps) {
 
       if (acceptedFiles.length > 0) {
         const file = acceptedFiles[0]
-        const imageUrl = URL.createObjectURL(file)
         
         try {
           setIsAnalyzing(true)
           const startTime = performance.now()
-          const predictions = await analyzeImage(file, token)
+          const { predictions, originalUrl } = await analyzeImage(file, token)
           const endTime = performance.now()
           const inferenceTime = (endTime - startTime) / 1000 // Convert to seconds
           setIsAnalyzing(false)
-          onImageUpload(imageUrl, predictions, inferenceTime)
+          onImageUpload(originalUrl, predictions, inferenceTime)
         } catch (error: any) {
           console.error('Error analyzing image:', error)
           setIsAnalyzing(false)
