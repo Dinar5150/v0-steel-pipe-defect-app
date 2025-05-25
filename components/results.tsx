@@ -877,7 +877,7 @@ export function Results({
         <CardContent className="flex-1 overflow-auto space-y-4">
           {/* File Upload */}
           <div>
-            <Button onClick={() => fileInputRef.current?.click()} className="w-full" variant="outline">
+            <Button onClick={onReset} className="w-full" variant="outline">
               <Upload className="w-4 h-4 mr-2" />
               Upload Image
             </Button>
