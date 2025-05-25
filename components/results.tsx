@@ -851,6 +851,21 @@ export function Results({
     }
   }, [image])
 
+  // Debug function to show polygon coordinates
+  const debugShowCoordinates = useCallback(() => {
+    console.log('Current Polygon Selections:')
+    selections.forEach((selection, index) => {
+      console.log(`\nPolygon ${index + 1} (${selection.label}):`)
+      console.log('Points:', selection.points.map(p => `(${p.x.toFixed(2)}, ${p.y.toFixed(2)})`).join(', '))
+    })
+  }, [selections])
+
+  // Expose debug function to window
+  useEffect(() => {
+    // @ts-ignore
+    window.debugShowCoordinates = debugShowCoordinates
+  }, [debugShowCoordinates])
+
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Left Panel */}
@@ -882,13 +897,28 @@ export function Results({
           <div>
             <h3 className="font-semibold mb-2">Tools</h3>
             <div className="grid grid-cols-3 gap-2">
-              <Button variant={tool === "pan" ? "default" : "outline"} size="sm" onClick={() => setTool("pan")}>
+              <Button
+                variant={tool === "pan" ? "default" : "outline"}
+                className={tool === "pan" ? "bg-blue-500 hover:bg-blue-600 text-white" : ""}
+                size="sm"
+                onClick={() => setTool("pan")}
+              >
                 <Move className="w-4 h-4" />
               </Button>
-              <Button variant={tool === "polygon" ? "default" : "outline"} size="sm" onClick={() => setTool("polygon")}>
+              <Button
+                variant={tool === "polygon" ? "default" : "outline"}
+                className={tool === "polygon" ? "bg-blue-500 hover:bg-blue-600 text-white" : ""}
+                size="sm"
+                onClick={() => setTool("polygon")}
+              >
                 <Polygon className="w-4 h-4" />
               </Button>
-              <Button variant={tool === "edit" ? "default" : "outline"} size="sm" onClick={() => setTool("edit")}>
+              <Button
+                variant={tool === "edit" ? "default" : "outline"}
+                className={tool === "edit" ? "bg-blue-500 hover:bg-blue-600 text-white" : ""}
+                size="sm"
+                onClick={() => setTool("edit")}
+              >
                 <Edit3 className="w-4 h-4" />
               </Button>
             </div>
