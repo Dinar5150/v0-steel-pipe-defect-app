@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator"
 import { ZoomIn, ZoomOut, Move, OctagonIcon as Polygon, Edit3, Trash2, Save, Upload, Minus } from "lucide-react"
 import { PredictionResult } from "@/lib/api"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
+import * as XLSX from "xlsx"
 
 interface ResultsProps {
   image: string
@@ -958,6 +959,51 @@ export function Results({
     window.debugShowCoordinates = debugShowCoordinates
   }, [debugShowCoordinates])
 
+  // Excel report generation
+  const downloadExcelReport = useCallback(() => {
+    if (!imageElement) return
+    const width = imageElement.width
+    const regionCount = 10
+    const regionWidth = width / regionCount
+    const mmRanges = [
+      "0-300", "300-600", "600-900", "900-1200", "1200-1500", "1500-1800", "1800-2100", "2100-2400", "2400-2700", "2700-3000"
+    ]
+    const rows = []
+    for (let i = 0; i < regionCount; ++i) {
+      // Find all segment names that have at least one point in this region
+      const xStart = i * regionWidth
+      const xEnd = (i + 1) * regionWidth
+      const regionDefects = selections
+        .filter(sel => sel.isComplete && sel.points.some(p => p.x >= xStart && p.x < xEnd))
+        .map(sel => sel.label)
+      rows.push({
+        "Номер сварного соединения по журналу сварки": "<Напишите здесь>",
+        "Диаметр и толщина стенки трубы, мм": "<Напишите здесь>",
+        "Шифр бригады или клеймо сварщика": "<Напишите здесь>",
+        "Номер участка контроля (координаты мерного пояса)": mmRanges[i],
+        "Чувствительность контроля, мм": 0.5,
+        "Описание выявленных дефектов": regionDefects.join(", "),
+        "Координаты недопустимых дефектов по периметру шва": "<Напишите здесь>",
+        "Заключение (годен, ремонт, вырезать)": "<Напишите здесь>",
+        "Примечания": "<Напишите здесь>"
+      })
+    }
+    const ws = XLSX.utils.json_to_sheet(rows, {header: [
+      "Номер сварного соединения по журналу сварки",
+      "Диаметр и толщина стенки трубы, мм",
+      "Шифр бригады или клеймо сварщика",
+      "Номер участка контроля (координаты мерного пояса)",
+      "Чувствительность контроля, мм",
+      "Описание выявленных дефектов",
+      "Координаты недопустимых дефектов по периметру шва",
+      "Заключение (годен, ремонт, вырезать)",
+      "Примечания"
+    ]})
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Отчет")
+    XLSX.writeFile(wb, "report.xlsx")
+  }, [imageElement, selections])
+
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Left Panel */}
@@ -977,10 +1023,16 @@ export function Results({
           </div>
 
           {image && (
-            <Button onClick={downloadPNG} className="w-full" variant="outline">
-              <Save className="w-4 h-4 mr-2" />
-              Download PNG
-            </Button>
+            <>
+              <Button onClick={downloadPNG} className="w-full mb-2" variant="outline">
+                <Save className="w-4 h-4 mr-2" />
+                Image Report
+              </Button>
+              <Button onClick={downloadExcelReport} className="w-full" variant="outline">
+                <Save className="w-4 h-4 mr-2" />
+                Excel Report
+              </Button>
+            </>
           )}
 
           <Separator />
