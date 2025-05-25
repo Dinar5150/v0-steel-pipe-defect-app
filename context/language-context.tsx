@@ -45,6 +45,27 @@ type TranslationKeys =
   | "history.search.placeholder"
   | "back"
   | "download_report"
+  | "results.image.segmentation"
+  | "results.upload.image"
+  | "results.image.report"
+  | "results.excel.report"
+  | "results.tools"
+  | "results.zoom"
+  | "results.fit"
+  | "results.current.polygon"
+  | "results.select.segment"
+  | "results.complete"
+  | "results.cancel"
+  | "results.points"
+  | "results.selections"
+  | "results.edit.polygon"
+  | "results.add.nodes"
+  | "results.remove.nodes"
+  | "results.move.nodes"
+  | "results.select.polygon"
+  | "results.pan.image"
+  | "results.add.points"
+  | "results.complete.polygon"
 
 type Translations = {
   [key in Language]: {
@@ -99,7 +120,28 @@ const translations: Translations = {
     "history.edited": "Edited",
     "history.search.placeholder": "Search by defect type...",
     "back": "Back",
-    "download_report": "Download CSV report"
+    "download_report": "Download CSV report",
+    "results.image.segmentation": "Image Segmentation",
+    "results.upload.image": "Upload Image",
+    "results.image.report": "Image Report",
+    "results.excel.report": "Excel Report",
+    "results.tools": "Tools",
+    "results.zoom": "Zoom",
+    "results.fit": "Fit",
+    "results.current.polygon": "Current Polygon",
+    "results.select.segment": "Select segment name",
+    "results.complete": "Complete",
+    "results.cancel": "Cancel",
+    "results.points": "Points",
+    "results.selections": "Selections",
+    "results.edit.polygon": "Edit Polygon",
+    "results.add.nodes": "Click green buttons on edges to add nodes",
+    "results.remove.nodes": "Right-click nodes to remove",
+    "results.move.nodes": "Drag nodes to reposition",
+    "results.select.polygon": "Select a polygon to edit",
+    "results.pan.image": "Click and drag to pan the image",
+    "results.add.points": "Click to add points, complete polygon in sidebar",
+    "results.complete.polygon": "Complete polygon in sidebar"
   },
   ru: {
     "analyze.another": "Проанализировать другое изображение",
@@ -141,7 +183,28 @@ const translations: Translations = {
     "history.edited": "Изменено",
     "history.search.placeholder": "Поиск по типу дефекта...",
     "back": "Назад",
-    "download_report": "Скачать CSV-отчёт"
+    "download_report": "Скачать CSV-отчёт",
+    "results.image.segmentation": "Сегментация изображения",
+    "results.upload.image": "Загрузить изображение",
+    "results.image.report": "Изображение-отчет",
+    "results.excel.report": "Excel отчет",
+    "results.tools": "Инструменты",
+    "results.zoom": "Масштаб",
+    "results.fit": "По размеру",
+    "results.current.polygon": "Текущий полигон",
+    "results.select.segment": "Выберите имя сегмента",
+    "results.complete": "Завершить",
+    "results.cancel": "Отмена",
+    "results.points": "Точки",
+    "results.selections": "Выделения",
+    "results.edit.polygon": "Редактировать полигон",
+    "results.add.nodes": "Нажмите зеленые кнопки на краях, чтобы добавить узлы",
+    "results.remove.nodes": "Правый клик по узлам для удаления",
+    "results.move.nodes": "Перетащите узлы для перемещения",
+    "results.select.polygon": "Выберите полигон для редактирования",
+    "results.pan.image": "Нажмите и перетащите для перемещения изображения",
+    "results.add.points": "Нажмите для добавления точек, завершите полигон в боковой панели",
+    "results.complete.polygon": "Завершите полигон в боковой панели"
   }
 }
 

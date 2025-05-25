@@ -10,6 +10,7 @@ import { ZoomIn, ZoomOut, Move, OctagonIcon as Polygon, Edit3, Trash2, Save, Upl
 import { PredictionResult } from "@/lib/api"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import * as XLSX from "xlsx"
+import { useLanguage } from "@/context/language-context"
 
 interface ResultsProps {
   image: string
@@ -63,6 +64,7 @@ export function Results({
   onToggleEditMode,
   onSegmentsChange,
 }: ResultsProps) {
+  const { t } = useLanguage()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -1009,7 +1011,7 @@ export function Results({
       {/* Left Panel */}
       <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
         <CardHeader>
-          <CardTitle>Image Segmentation</CardTitle>
+          <CardTitle>{t("results.image.segmentation")}</CardTitle>
         </CardHeader>
 
         <CardContent className="flex-1 overflow-auto space-y-4">
@@ -1017,7 +1019,7 @@ export function Results({
           <div>
             <Button onClick={onReset} className="w-full" variant="outline">
               <Upload className="w-4 h-4 mr-2" />
-              Upload Image
+              {t("results.upload.image")}
             </Button>
             <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
           </div>
@@ -1026,11 +1028,11 @@ export function Results({
             <>
               <Button onClick={downloadPNG} className="w-full mb-2" variant="outline">
                 <Save className="w-4 h-4 mr-2" />
-                Image Report
+                {t("results.image.report")}
               </Button>
               <Button onClick={downloadExcelReport} className="w-full" variant="outline">
                 <Save className="w-4 h-4 mr-2" />
-                Excel Report
+                {t("results.excel.report")}
               </Button>
             </>
           )}
@@ -1039,7 +1041,7 @@ export function Results({
 
           {/* Tools */}
           <div>
-            <h3 className="font-semibold mb-2">Tools</h3>
+            <h3 className="font-semibold mb-2">{t("results.tools")}</h3>
             <div className="grid grid-cols-3 gap-2">
               <Button
                 variant={tool === "pan" ? "default" : "outline"}
@@ -1070,7 +1072,7 @@ export function Results({
 
           {/* Zoom Controls */}
           <div>
-            <h3 className="font-semibold mb-2">Zoom</h3>
+            <h3 className="font-semibold mb-2">{t("results.zoom")}</h3>
             <div className="flex items-center gap-2">
               <Button size="sm" variant="outline" onClick={zoomOut}>
                 <ZoomOut className="w-4 h-4" />
@@ -1093,7 +1095,7 @@ export function Results({
                 <ZoomIn className="w-4 h-4" />
               </Button>
               <Button size="sm" variant="outline" onClick={() => fitImageToCanvas()}>
-                Fit
+                {t("results.fit")}
               </Button>
             </div>
           </div>
@@ -1101,11 +1103,11 @@ export function Results({
           {/* Current Polygon */}
           {currentSelection && (
             <div>
-              <h3 className="font-semibold mb-2">Current Polygon</h3>
+              <h3 className="font-semibold mb-2">{t("results.current.polygon")}</h3>
               <div className="space-y-2">
                 <Select value={newLabel} onValueChange={setNewLabel}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Выберите имя сегмента" />
+                    <SelectValue placeholder={t("results.select.segment")} />
                   </SelectTrigger>
                   <SelectContent>
                     {SEGMENT_LABELS.map((label) => (
@@ -1116,13 +1118,13 @@ export function Results({
                 <div className="flex gap-2">
                   <Button size="sm" onClick={completePolygon} disabled={!newLabel}>
                     <Save className="w-4 h-4 mr-1" />
-                    Complete
+                    {t("results.complete")}
                   </Button>
                   <Button size="sm" variant="outline" onClick={cancelPolygon}>
-                    Cancel
+                    {t("results.cancel")}
                   </Button>
                 </div>
-                <p className="text-sm text-gray-600">Points: {currentSelection.points.length}</p>
+                <p className="text-sm text-gray-600">{t("results.points")}: {currentSelection.points.length}</p>
               </div>
             </div>
           )}
@@ -1131,7 +1133,7 @@ export function Results({
 
           {/* Selections List */}
           <div>
-            <h3 className="font-semibold mb-2">Selections ({selections.length})</h3>
+            <h3 className="font-semibold mb-2">{t("results.selections")} ({selections.length})</h3>
             <div className="space-y-2 max-h-60 overflow-auto">
               {selections.map((selection) => (
                 <div
@@ -1148,7 +1150,7 @@ export function Results({
                         <div className="flex items-center gap-1 flex-1" onClick={(e) => e.stopPropagation()}>
                           <Select value={editingLabelValue} onValueChange={setEditingLabelValue}>
                             <SelectTrigger className="h-6 text-sm flex-1">
-                              <SelectValue placeholder="Выберите имя сегмента" />
+                              <SelectValue placeholder={t("results.select.segment")} />
                             </SelectTrigger>
                             <SelectContent>
                               {SEGMENT_LABELS.map((label) => (
@@ -1183,7 +1185,7 @@ export function Results({
                       <Trash2 className="w-3 h-3" />
                     </Button>
                   </div>
-                  <div className="text-xs text-gray-500 mt-1">{selection.points.length} points</div>
+                  <div className="text-xs text-gray-500 mt-1">{selection.points.length} {t("results.points")}</div>
                 </div>
               ))}
             </div>
@@ -1192,22 +1194,22 @@ export function Results({
           {/* Edit Controls */}
           {selectedSelectionId && tool === "edit" && (
             <div>
-              <h3 className="font-semibold mb-2">Edit Polygon</h3>
+              <h3 className="font-semibold mb-2">{t("results.edit.polygon")}</h3>
               <div className="space-y-2">
                 <div className="space-y-1 text-sm text-gray-600">
                   <div className="flex items-center gap-2">
                     <div className="w-4 h-4 bg-green-600 rounded-full flex items-center justify-center">
                       <span className="text-white text-xs">+</span>
                     </div>
-                    <span>Click green buttons on edges to add nodes</span>
+                    <span>{t("results.add.nodes")}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Minus className="w-4 h-4 text-red-600" />
-                    <span>Right-click nodes to remove</span>
+                    <span>{t("results.remove.nodes")}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Move className="w-4 h-4 text-blue-600" />
-                    <span>Drag nodes to reposition</span>
+                    <span>{t("results.move.nodes")}</span>
                   </div>
                 </div>
               </div>
@@ -1234,7 +1236,7 @@ export function Results({
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="text-center text-gray-500">
               <Upload className="w-12 h-12 mx-auto mb-4" />
-              <p className="text-lg font-medium">Upload an image to start</p>
+              <p className="text-lg font-medium">{t("results.upload.image")}</p>
               <p className="text-sm">Supports large images up to 30k×1k pixels</p>
             </div>
           </div>
@@ -1244,16 +1246,16 @@ export function Results({
         {image && (
           <div className="absolute top-4 right-4 bg-white p-3 rounded-lg shadow-lg pointer-events-none">
             <div className="text-sm">
-              {tool === "pan" && "Click and drag to pan the image"}
-              {tool === "polygon" && "Click to add points, complete polygon in sidebar"}
+              {tool === "pan" && t("results.pan.image")}
+              {tool === "polygon" && t("results.add.points")}
               {tool === "edit" && selectedSelectionId && (
                 <div className="space-y-1">
-                  <div>• Click green buttons to add nodes</div>
-                  <div>• Right-click nodes to remove</div>
-                  <div>• Drag nodes to move them</div>
+                  <div>• {t("results.add.nodes")}</div>
+                  <div>• {t("results.remove.nodes")}</div>
+                  <div>• {t("results.move.nodes")}</div>
                 </div>
               )}
-              {tool === "edit" && !selectedSelectionId && "Select a polygon to edit"}
+              {tool === "edit" && !selectedSelectionId && t("results.select.polygon")}
             </div>
           </div>
         )}
