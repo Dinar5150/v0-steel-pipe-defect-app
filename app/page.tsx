@@ -24,6 +24,7 @@ export default function Home() {
   const [results, setResults] = useState<PredictionResult[] | null>(null)
   const [showDebug, setShowDebug] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
+  const [inferenceTime, setInferenceTime] = useState<number | undefined>()
 
   // Check for a selected analysis from history
   useEffect(() => {
@@ -50,9 +51,10 @@ export default function Home() {
     };
   }, []);
 
-  const handleImageUpload = (imageUrl: string, predictions: PredictionResult[]) => {
+  const handleImageUpload = (imageUrl: string, predictions: PredictionResult[], time: number) => {
     setImage(imageUrl)
     setIsAnalyzing(true)
+    setInferenceTime(time)
 
     // Process predictions
     setResults(predictions)
@@ -64,6 +66,7 @@ export default function Home() {
     setImage(null)
     setResults(null)
     setIsEditMode(false)
+    setInferenceTime(undefined)
   }
 
   const navigateToHistory = () => {
@@ -96,18 +99,19 @@ export default function Home() {
 
           <div className="container mx-auto px-4 py-12 relative z-10">
             <div className="flex flex-col items-center justify-between mb-8">
-              <motion.div
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="text-center mb-6"
-              >
-                <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">{t("upload.title")}</h1>
-                <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-                  {t("upload.subtitle")}
-                </p>
-              </motion.div>
-
+              {!image && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5 }}
+                  className="text-center mb-6"
+                >
+                  <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">{t("upload.title")}</h1>
+                  <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+                    {t("upload.subtitle")}
+                  </p>
+                </motion.div>
+              )}
               <div className="flex space-x-2">
                 <Button variant="outline" onClick={navigateToHistory} className="flex items-center">
                   <History className="mr-2 h-4 w-4" />
@@ -128,6 +132,7 @@ export default function Home() {
                   isEditMode={isEditMode}
                   onToggleEditMode={toggleEditMode}
                   onSegmentsChange={handleSegmentsChange}
+                  inferenceTime={inferenceTime}
                 />
 
                 {showDebug && results && !isAnalyzing && (

@@ -1,14 +1,16 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useRef, useEffect } from "react"
-import { motion } from "framer-motion"
-import { RefreshCw, ZoomIn, ZoomOut, Download, Edit, Check, Trash2, Plus, Undo, Redo, Globe } from "lucide-react"
+import React from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
-import { useLanguage } from "@/context/language-context"
+import { Input } from "@/components/ui/input"
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
+import { ZoomIn, ZoomOut, Move, OctagonIcon as Polygon, Edit3, Trash2, Save, Upload, Minus } from "lucide-react"
 import { PredictionResult } from "@/lib/api"
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
+import * as XLSX from "xlsx"
+import { useLanguage } from "@/context/language-context"
 
 interface ResultsProps {
   image: string
@@ -18,7 +20,41 @@ interface ResultsProps {
   isEditMode?: boolean
   onToggleEditMode?: () => void
   onSegmentsChange?: (segments: PredictionResult[]) => void
+  inferenceTime?: number
 }
+
+interface Point {
+  x: number
+  y: number
+}
+
+interface PolygonSelection {
+  id: string
+  points: Point[]
+  label: string
+  color: string
+  isComplete: boolean
+}
+
+type Tool = "pan" | "polygon" | "edit"
+
+const COLORS = ["#ff6b6b", "#4ecdc4", "#45b7d1", "#96ceb4", "#feca57", "#ff9ff3", "#54a0ff", "#5f27cd"]
+
+const SEGMENT_LABELS = [
+  "пора",
+  "включение",
+  "подрез",
+  "прожог",
+  "трещина",
+  "наплыв",
+  "эталон1",
+  "эталон2",
+  "эталон3",
+  "пора-скрытая",
+  "утяжина",
+  "несплавление",
+  "непровар-корня",
+]
 
 export function Results({
   image,
@@ -28,1010 +64,1192 @@ export function Results({
   isEditMode = false,
   onToggleEditMode,
   onSegmentsChange,
+  inferenceTime,
 }: ResultsProps) {
+  const { t } = useLanguage()
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const wasDraggingRef = useRef(false)
+
+  const [selections, setSelections] = useState<PolygonSelection[]>([])
+  const [currentSelection, setCurrentSelection] = useState<PolygonSelection | null>(null)
+  const [selectedSelectionId, setSelectedSelectionId] = useState<string | null>(null)
+  const [tool, setTool] = useState<Tool>("pan")
   const [zoom, setZoom] = useState(1)
-  const [selectedSegment, setSelectedSegment] = useState<number | null>(null)
-  const [isDraggingSegment, setIsDraggingSegment] = useState(false)
-  const [resizeHandle, setResizeHandle] = useState<string | null>(null)
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
-  const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 })
-  const [imageDisplayDimensions, setImageDisplayDimensions] = useState({ width: 0, height: 0 })
-  const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 })
-  const [resizeStartData, setResizeStartData] = useState<{
-    x0: number
-    y0: number
-    x1: number
-    y1: number
-    mouseX: number
-    mouseY: number
-  } | null>(null)
-  const [editingLabel, setEditingLabel] = useState<number | null>(null)
-  const [editingLabelText, setEditingLabelText] = useState("")
-
-  // For undo/redo functionality
-  const [history, setHistory] = useState<PredictionResult[][]>([])
-  const [historyIndex, setHistoryIndex] = useState(-1)
-
-  // For image panning
+  const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
-  const [position, setPosition] = useState({ x: 0, y: 0 })
+  const [isPanning, setIsPanning] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
-  const [isHovering, setIsHovering] = useState(false)
-  const imageContainerRef = useRef<HTMLDivElement>(null)
-  const imageRef = useRef<HTMLImageElement>(null)
-  const imageWrapperRef = useRef<HTMLDivElement>(null)
-  const segmentsContainerRef = useRef<HTMLDivElement>(null)
+  const [editingNodeIndex, setEditingNodeIndex] = useState<number | null>(null)
+  const [isDraggingNode, setIsDraggingNode] = useState(false)
+  const [newLabel, setNewLabel] = useState("")
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
+  const [hoveredAddButton, setHoveredAddButton] = useState<number | null>(null)
+  const [imageElement, setImageElement] = useState<HTMLImageElement | null>(null)
+  const [zoomInput, setZoomInput] = useState("100")
+  const [editingLabelId, setEditingLabelId] = useState<string | null>(null)
+  const [editingLabelValue, setEditingLabelValue] = useState("")
 
-  const { t, toggleLanguage, language } = useLanguage()
+  // Setup canvas with proper DPI handling
+  const setupCanvas = useCallback(() => {
+    const canvas = canvasRef.current
+    const container = containerRef.current
+    if (!canvas || !container) return
 
-  // Update image dimensions when the image loads
-  useEffect(() => {
-    if (imageRef.current && imageRef.current.complete) {
-      setImageDimensions({
-        width: imageRef.current.naturalWidth,
-        height: imageRef.current.naturalHeight,
+    const rect = container.getBoundingClientRect()
+    const dpr = window.devicePixelRatio || 1
+
+    // Set display size
+    canvas.style.width = rect.width + "px"
+    canvas.style.height = rect.height + "px"
+
+    // Set actual canvas size accounting for device pixel ratio
+    canvas.width = rect.width * dpr
+    canvas.height = rect.height * dpr
+
+    // Scale the context to match device pixel ratio
+    const ctx = canvas.getContext("2d")
+    if (ctx) {
+      ctx.scale(dpr, dpr)
+    }
+
+    setCanvasSize({ width: rect.width, height: rect.height })
+  }, [])
+
+  // Convert screen coordinates to canvas coordinates
+  const getCanvasCoordinates = useCallback((clientX: number, clientY: number) => {
+    const canvas = canvasRef.current
+    if (!canvas) return { x: 0, y: 0 }
+
+    const rect = canvas.getBoundingClientRect()
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+    }
+  }, [])
+
+  // Convert canvas coordinates to image coordinates
+  const canvasToImage = useCallback(
+    (canvasX: number, canvasY: number) => {
+      const x = (canvasX - pan.x) / zoom
+      const y = (canvasY - pan.y) / zoom
+      return { x, y }
+    },
+    [zoom, pan],
+  )
+
+  // Convert image coordinates to canvas coordinates
+  const imageToCanvas = useCallback(
+    (imageX: number, imageY: number) => {
+      return {
+        x: imageX * zoom + pan.x,
+        y: imageY * zoom + pan.y,
+      }
+    },
+    [zoom, pan],
+  )
+
+  // Combined function: screen to image coordinates
+  const screenToImage = useCallback(
+    (clientX: number, clientY: number) => {
+      const canvasCoords = getCanvasCoordinates(clientX, clientY)
+      return canvasToImage(canvasCoords.x, canvasCoords.y)
+    },
+    [getCanvasCoordinates, canvasToImage],
+  )
+
+  // Calculate midpoint of an edge
+  const getEdgeMidpoint = useCallback((point1: Point, point2: Point) => {
+    return {
+      x: (point1.x + point2.x) / 2,
+      y: (point1.y + point2.y) / 2,
+    }
+  }, [])
+
+  // Check if click is on an add button
+  const getClickedAddButton = useCallback(
+    (canvasCoords: Point, selection: PolygonSelection) => {
+      if (!selection.isComplete) return null
+
+      for (let i = 0; i < selection.points.length; i++) {
+        const point1 = selection.points[i]
+        const point2 = selection.points[(i + 1) % selection.points.length]
+        const midpoint = getEdgeMidpoint(point1, point2)
+        const screenMidpoint = imageToCanvas(midpoint.x, midpoint.y)
+
+        const distance = Math.sqrt(
+          Math.pow(canvasCoords.x - screenMidpoint.x, 2) + Math.pow(canvasCoords.y - screenMidpoint.y, 2),
+        )
+
+        // Check if click is within the add button radius
+        if (distance <= 8) {
+          return i
+        }
+      }
+      return null
+    },
+    [getEdgeMidpoint, imageToCanvas],
+  )
+
+  // Add node at midpoint of edge
+  const addNodeAtMidpoint = useCallback(
+    (selectionId: string, edgeIndex: number) => {
+      setSelections((prev) =>
+        prev.map((selection) => {
+          if (selection.id === selectionId) {
+            const newPoints = [...selection.points]
+            const point1 = newPoints[edgeIndex]
+            const point2 = newPoints[(edgeIndex + 1) % newPoints.length]
+            const midPoint = getEdgeMidpoint(point1, point2)
+            newPoints.splice(edgeIndex + 1, 0, midPoint)
+            return { ...selection, points: newPoints }
+          }
+          return selection
+        }),
+      )
+    },
+    [getEdgeMidpoint],
+  )
+
+  // Remove node from polygon
+  const removeNodeFromPolygon = useCallback((selectionId: string, nodeIndex: number) => {
+    setSelections((prev) =>
+      prev.map((selection) => {
+        if (selection.id === selectionId && selection.points.length > 3) {
+          const newPoints = selection.points.filter((_, index) => index !== nodeIndex)
+          return { ...selection, points: newPoints }
+        }
+        return selection
+      }),
+    )
+  }, [])
+
+  // Draw everything on canvas
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext("2d")
+    if (!canvas || !ctx) return
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvasSize.width, canvasSize.height)
+
+    // Draw image if loaded
+    if (imageElement) {
+      ctx.save()
+      ctx.translate(pan.x, pan.y)
+      ctx.scale(zoom, zoom)
+      ctx.drawImage(imageElement, 0, 0)
+      ctx.restore()
+    }
+
+    // Draw completed selections
+    selections.forEach((selection) => {
+      if (selection.points.length > 0) {
+        ctx.save()
+        ctx.translate(pan.x, pan.y)
+        ctx.scale(zoom, zoom)
+
+        ctx.strokeStyle = selection.color
+        ctx.fillStyle = selection.color + "20"
+        ctx.lineWidth = 2 / zoom
+
+        ctx.beginPath()
+        ctx.moveTo(selection.points[0].x, selection.points[0].y)
+        selection.points.forEach((point) => {
+          ctx.lineTo(point.x, point.y)
+        })
+        if (selection.isComplete) {
+          ctx.closePath()
+          ctx.fill()
+        }
+        ctx.stroke()
+
+        // Draw nodes if this selection is selected
+        if (selectedSelectionId === selection.id) {
+          selection.points.forEach((point, index) => {
+            ctx.beginPath()
+            ctx.arc(point.x, point.y, 4 / zoom, 0, 2 * Math.PI)
+
+            // Highlight the node being dragged
+            if (isDraggingNode && editingNodeIndex === index) {
+              ctx.fillStyle = "#fff"
+              ctx.fill()
+              ctx.strokeStyle = selection.color
+              ctx.lineWidth = 3 / zoom
+            } else {
+              ctx.fillStyle = selection.color
+              ctx.fill()
+              ctx.strokeStyle = "#fff"
+              ctx.lineWidth = 1 / zoom
+            }
+            ctx.stroke()
+
+            // Add node number for easier identification
+            if (tool === "edit") {
+              ctx.fillStyle = "#fff"
+              ctx.font = `${8 / zoom}px Arial`
+              ctx.textAlign = "center"
+              ctx.fillText((index + 1).toString(), point.x, point.y + 2 / zoom)
+            }
+          })
+
+          // Draw interactive add buttons at edge midpoints
+          if (tool === "edit" && selection.isComplete && !isDraggingNode) {
+            for (let i = 0; i < selection.points.length; i++) {
+              const point1 = selection.points[i]
+              const point2 = selection.points[(i + 1) % selection.points.length]
+              const midpoint = getEdgeMidpoint(point1, point2)
+
+              // Draw add button background
+              ctx.beginPath()
+              ctx.arc(midpoint.x, midpoint.y, 8 / zoom, 0, 2 * Math.PI)
+
+              // Highlight if hovered
+              if (hoveredAddButton === i) {
+                ctx.fillStyle = "#00dd00"
+                ctx.strokeStyle = "#fff"
+                ctx.lineWidth = 3 / zoom
+              } else {
+                ctx.fillStyle = "#00aa00"
+                ctx.strokeStyle = "#fff"
+                ctx.lineWidth = 2 / zoom
+              }
+
+              ctx.fill()
+              ctx.stroke()
+
+              // Draw plus sign
+              ctx.strokeStyle = "#fff"
+              ctx.lineWidth = 2 / zoom
+              const size = 4 / zoom
+
+              ctx.beginPath()
+              ctx.moveTo(midpoint.x - size, midpoint.y)
+              ctx.lineTo(midpoint.x + size, midpoint.y)
+              ctx.moveTo(midpoint.x, midpoint.y - size)
+              ctx.lineTo(midpoint.x, midpoint.y + size)
+              ctx.stroke()
+            }
+          }
+        }
+
+        // Draw label
+        if (selection.label && selection.isComplete) {
+          const centerX = selection.points.reduce((sum, p) => sum + p.x, 0) / selection.points.length
+          const centerY = selection.points.reduce((sum, p) => sum + p.y, 0) / selection.points.length
+
+          // Find the topmost point to position label above the polygon
+          const minY = Math.min(...selection.points.map((p) => p.y))
+          const labelY = minY - 20 / zoom // Position label above the polygon
+
+          ctx.font = `${12 / zoom}px Arial`
+          ctx.textAlign = "center"
+
+          // Measure text to get proper dimensions
+          const textMetrics = ctx.measureText(selection.label)
+          const textWidth = textMetrics.width
+          const textHeight = 12 / zoom
+          const padding = 4 / zoom
+
+          // Draw background with segment color
+          ctx.fillStyle = selection.color
+          ctx.fillRect(
+            centerX - textWidth / 2 - padding,
+            labelY - textHeight - padding,
+            textWidth + padding * 2,
+            textHeight + padding * 2,
+          )
+
+          // Draw text in white for better contrast
+          ctx.fillStyle = "#fff"
+          ctx.fillText(selection.label, centerX, labelY - padding)
+        }
+
+        ctx.restore()
+      }
+    })
+
+    // Draw current selection being created
+    if (currentSelection && currentSelection.points.length > 0) {
+      ctx.save()
+      ctx.translate(pan.x, pan.y)
+      ctx.scale(zoom, zoom)
+
+      ctx.strokeStyle = currentSelection.color
+      ctx.lineWidth = 2 / zoom
+
+      ctx.beginPath()
+      ctx.moveTo(currentSelection.points[0].x, currentSelection.points[0].y)
+      currentSelection.points.forEach((point) => {
+        ctx.lineTo(point.x, point.y)
       })
+      ctx.stroke()
+
+      // Draw nodes
+      currentSelection.points.forEach((point) => {
+        ctx.beginPath()
+        ctx.arc(point.x, point.y, 4 / zoom, 0, 2 * Math.PI)
+        ctx.fillStyle = currentSelection.color
+        ctx.fill()
+        ctx.strokeStyle = "#fff"
+        ctx.lineWidth = 1 / zoom
+        ctx.stroke()
+      })
+
+      ctx.restore()
+    }
+  }, [
+    imageElement,
+    selections,
+    currentSelection,
+    selectedSelectionId,
+    zoom,
+    pan,
+    canvasSize,
+    isDraggingNode,
+    editingNodeIndex,
+    tool,
+    hoveredAddButton,
+    getEdgeMidpoint,
+  ])
+
+  // Check if a point is inside a polygon using ray casting algorithm
+  const isPointInPolygon = useCallback((point: Point, polygon: Point[]) => {
+    let inside = false
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      if (
+        polygon[i].y > point.y !== polygon[j].y > point.y &&
+        point.x <
+          ((polygon[j].x - polygon[i].x) * (point.y - polygon[i].y)) / (polygon[j].y - polygon[i].y) + polygon[i].x
+      ) {
+        inside = !inside
+      }
+    }
+    return inside
+  }, [])
+
+  // Handle canvas click
+  const handleCanvasClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+
+      // Don't handle clicks if we were dragging
+      if (wasDraggingRef.current) {
+        wasDraggingRef.current = false
+        return
+      }
+
+      const imageCoords = screenToImage(e.clientX, e.clientY)
+      const canvasCoords = getCanvasCoordinates(e.clientX, e.clientY)
+
+      if (tool === "polygon") {
+        if (!currentSelection) {
+          // Start new polygon
+          const newSelection: PolygonSelection = {
+            id: Date.now().toString(),
+            points: [imageCoords],
+            label: "",
+            color: COLORS[selections.length % COLORS.length],
+            isComplete: false,
+          }
+          setCurrentSelection(newSelection)
+        } else {
+          // Add point to current polygon
+          const updatedSelection = {
+            ...currentSelection,
+            points: [...currentSelection.points, imageCoords],
+          }
+          setCurrentSelection(updatedSelection)
+        }
+      } else if (tool === "edit") {
+        // Check if clicking on an add button first (if a selection is already selected)
+        if (selectedSelectionId) {
+          const selectedSelection = selections.find((s) => s.id === selectedSelectionId)
+          if (selectedSelection) {
+            const addButtonIndex = getClickedAddButton(canvasCoords, selectedSelection)
+            if (addButtonIndex !== null) {
+              addNodeAtMidpoint(selectedSelectionId, addButtonIndex)
+              return
+            }
+          }
+        }
+
+        // Check if clicking inside any polygon to select it
+        let clickedSelection: PolygonSelection | null = null
+
+        // Check selections in reverse order (top to bottom) to select the topmost one
+        for (let i = selections.length - 1; i >= 0; i--) {
+          const selection = selections[i]
+          if (selection.isComplete && isPointInPolygon(imageCoords, selection.points)) {
+            clickedSelection = selection
+            break
+          }
+        }
+
+        if (clickedSelection) {
+          // Select the clicked polygon
+          setSelectedSelectionId(clickedSelection.id)
+        } else {
+          // Click was not inside any polygon, deselect current selection
+          setSelectedSelectionId(null)
+        }
+      }
+    },
+    [
+      tool,
+      currentSelection,
+      selections,
+      screenToImage,
+      getCanvasCoordinates,
+      selectedSelectionId,
+      getClickedAddButton,
+      addNodeAtMidpoint,
+      isPointInPolygon,
+    ],
+  )
+
+  // Handle right click for node deletion
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+
+      if (tool === "edit" && selectedSelectionId) {
+        const canvasCoords = getCanvasCoordinates(e.clientX, e.clientY)
+        const selectedSelection = selections.find((s) => s.id === selectedSelectionId)
+
+        if (selectedSelection) {
+          // Check if right-clicking on a node
+          const nodeIndex = selectedSelection.points.findIndex((point) => {
+            const screenPoint = imageToCanvas(point.x, point.y)
+            const distance = Math.sqrt(
+              Math.pow(canvasCoords.x - screenPoint.x, 2) + Math.pow(canvasCoords.y - screenPoint.y, 2),
+            )
+            return distance < 8
+          })
+
+          if (nodeIndex !== -1 && selectedSelection.points.length > 3) {
+            removeNodeFromPolygon(selectedSelectionId, nodeIndex)
+          }
+        }
+      }
+    },
+    [tool, selectedSelectionId, selections, getCanvasCoordinates, imageToCanvas, removeNodeFromPolygon],
+  )
+
+  // Handle mouse down for panning and node dragging
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+
+      if (e.button !== 0) return // Only handle left mouse button
+
+      const canvasCoords = getCanvasCoordinates(e.clientX, e.clientY)
+
+      if (tool === "edit" && selectedSelectionId) {
+        // Check if clicking on a node for dragging (prioritize over add buttons)
+        const selectedSelection = selections.find((s) => s.id === selectedSelectionId)
+        if (selectedSelection) {
+          const nodeIndex = selectedSelection.points.findIndex((point) => {
+            const screenPoint = imageToCanvas(point.x, point.y)
+            const distance = Math.sqrt(
+              Math.pow(canvasCoords.x - screenPoint.x, 2) + Math.pow(canvasCoords.y - screenPoint.y, 2),
+            )
+            return distance < 8
+          })
+
+          if (nodeIndex !== -1) {
+            setEditingNodeIndex(nodeIndex)
+            setIsDraggingNode(true)
+            return
+          }
+        }
+      }
+
+      if (tool === "pan") {
+        setIsPanning(true)
+        setDragStart({
+          x: canvasCoords.x - pan.x,
+          y: canvasCoords.y - pan.y,
+        })
+      }
+    },
+    [tool, pan, getCanvasCoordinates, selectedSelectionId, selections, imageToCanvas],
+  )
+
+  // Handle mouse move
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      const canvasCoords = getCanvasCoordinates(e.clientX, e.clientY)
+
+      if (isPanning && tool === "pan") {
+        setPan({
+          x: canvasCoords.x - dragStart.x,
+          y: canvasCoords.y - dragStart.y,
+        })
+      } else if (isDraggingNode && editingNodeIndex !== null && selectedSelectionId) {
+        // Real-time node position update
+        const imageCoords = screenToImage(e.clientX, e.clientY)
+        setSelections((prev) =>
+          prev.map((selection) => {
+            if (selection.id === selectedSelectionId) {
+              const newPoints = [...selection.points]
+              newPoints[editingNodeIndex] = imageCoords
+              return { ...selection, points: newPoints }
+            }
+            return selection
+          }),
+        )
+      } else if (tool === "edit" && selectedSelectionId && !isDraggingNode) {
+        // Check for add button hovering
+        const selectedSelection = selections.find((s) => s.id === selectedSelectionId)
+        if (selectedSelection) {
+          const addButtonIndex = getClickedAddButton(canvasCoords, selectedSelection)
+          setHoveredAddButton(addButtonIndex)
+        }
+      }
+    },
+    [
+      isPanning,
+      tool,
+      dragStart,
+      isDraggingNode,
+      editingNodeIndex,
+      selectedSelectionId,
+      getCanvasCoordinates,
+      screenToImage,
+      selections,
+      getClickedAddButton,
+    ],
+  )
+
+  // Handle mouse up
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+
+    if (e.button !== 0) return // Only handle left mouse button
+
+    // If we were dragging, set the flag to prevent click handling
+    if (isDraggingNode || isPanning) {
+      wasDraggingRef.current = true
+    }
+
+    // Stop all dragging operations
+    setIsPanning(false)
+    setIsDraggingNode(false)
+    setEditingNodeIndex(null)
+  }, [isDraggingNode, isPanning])
+
+  // Complete current polygon
+  const completePolygon = useCallback(() => {
+    if (currentSelection && currentSelection.points.length >= 3) {
+      const completedSelection = {
+        ...currentSelection,
+        isComplete: true,
+        label: newLabel || `Polygon ${selections.length + 1}`,
+      }
+      setSelections((prev) => [...prev, completedSelection])
+      setCurrentSelection(null)
+      setNewLabel("")
+    }
+  }, [currentSelection, selections.length, newLabel])
+
+  // Cancel current polygon
+  const cancelPolygon = useCallback(() => {
+    setCurrentSelection(null)
+    setNewLabel("")
+  }, [])
+
+  // Delete selection
+  const deleteSelection = useCallback(
+    (id: string) => {
+      setSelections((prev) => prev.filter((s) => s.id !== id))
+      if (selectedSelectionId === id) {
+        setSelectedSelectionId(null)
+      }
+    },
+    [selectedSelectionId],
+  )
+
+  // Handle file upload
+  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const img = new Image()
+      img.onload = () => {
+        setImageElement(img)
+        // Reset view and fit image with proper aspect ratio
+        fitImageToCanvas(img)
+        // Clear selections
+        setSelections([])
+        setCurrentSelection(null)
+        setSelectedSelectionId(null)
+      }
+      img.src = URL.createObjectURL(file)
+    }
+  }, [])
+
+  // Fit image to canvas with proper aspect ratio
+  const fitImageToCanvas = useCallback(
+    (img?: HTMLImageElement) => {
+      const targetImage = img || imageElement
+      if (!targetImage || !canvasSize.width || !canvasSize.height) return
+
+      // Calculate scale to fit image while maintaining aspect ratio
+      const scaleX = canvasSize.width / targetImage.width
+      const scaleY = canvasSize.height / targetImage.height
+      const scale = Math.min(scaleX, scaleY) * 0.9 // 90% to leave some margin
+
+      setZoom(scale)
+
+      // Center the image
+      const scaledWidth = targetImage.width * scale
+      const scaledHeight = targetImage.height * scale
+      setPan({
+        x: (canvasSize.width - scaledWidth) / 2,
+        y: (canvasSize.height - scaledHeight) / 2,
+      })
+    },
+    [imageElement, canvasSize],
+  )
+
+  // Zoom functions
+  const zoomIn = useCallback(() => {
+    setZoom((prevZoom) => {
+      const newZoom = Math.min(prevZoom * 1.2, 10)
+      if (!canvasRef.current) return newZoom
+      const canvas = canvasRef.current
+      const center = { x: canvas.width / 2 / (window.devicePixelRatio || 1), y: canvas.height / 2 / (window.devicePixelRatio || 1) }
+      // Image coordinates at center before zoom
+      const imageCenter = { x: (center.x - pan.x) / prevZoom, y: (center.y - pan.y) / prevZoom }
+      // New pan to keep imageCenter at canvas center
+      setPan({
+        x: center.x - imageCenter.x * newZoom,
+        y: center.y - imageCenter.y * newZoom,
+      })
+      return newZoom
+    })
+  }, [pan])
+
+  const zoomOut = useCallback(() => {
+    setZoom((prevZoom) => {
+      const newZoom = Math.max(prevZoom / 1.2, 0.1)
+      if (!canvasRef.current) return newZoom
+      const canvas = canvasRef.current
+      const center = { x: canvas.width / 2 / (window.devicePixelRatio || 1), y: canvas.height / 2 / (window.devicePixelRatio || 1) }
+      // Image coordinates at center before zoom
+      const imageCenter = { x: (center.x - pan.x) / prevZoom, y: (center.y - pan.y) / prevZoom }
+      // New pan to keep imageCenter at canvas center
+      setPan({
+        x: center.x - imageCenter.x * newZoom,
+        y: center.y - imageCenter.y * newZoom,
+      })
+      return newZoom
+    })
+  }, [pan])
+
+  const handleZoomInputChange = useCallback((value: string) => {
+    setZoomInput(value)
+    const numValue = Number.parseFloat(value)
+    if (!isNaN(numValue) && numValue > 0 && numValue <= 1000) {
+      setZoom((prevZoom) => {
+        const newZoom = numValue / 100
+        if (!canvasRef.current) return newZoom
+        const canvas = canvasRef.current
+        const center = { x: canvas.width / 2 / (window.devicePixelRatio || 1), y: canvas.height / 2 / (window.devicePixelRatio || 1) }
+        // Image coordinates at center before zoom
+        const imageCenter = { x: (center.x - pan.x) / prevZoom, y: (center.y - pan.y) / prevZoom }
+        // New pan to keep imageCenter at canvas center
+        setPan({
+          x: center.x - imageCenter.x * newZoom,
+          y: center.y - imageCenter.y * newZoom,
+        })
+        return newZoom
+      })
+    }
+  }, [pan])
+
+  const downloadPNG = useCallback(() => {
+    if (!imageElement) return
+
+    // 1. Calculate bounding box for image, polygons, and labels
+    let minX = 0, minY = 0, maxX = imageElement.width, maxY = imageElement.height
+
+    selections.forEach((selection) => {
+      if (selection.points.length > 0 && selection.isComplete) {
+        // Polygon points
+        selection.points.forEach((p) => {
+          minX = Math.min(minX, p.x)
+          minY = Math.min(minY, p.y)
+          maxX = Math.max(maxX, p.x)
+          maxY = Math.max(maxY, p.y)
+        })
+        // Label rectangle
+        if (selection.label) {
+          const centerX = selection.points.reduce((sum, p) => sum + p.x, 0) / selection.points.length
+          const minYPoly = Math.min(...selection.points.map((p) => p.y))
+          const labelY = minYPoly - 20
+          // Estimate label size
+          const font = "12px Arial"
+          const tempCanvas = document.createElement("canvas")
+          const tempCtx = tempCanvas.getContext("2d")
+          let textWidth = 0, textHeight = 12, padding = 4
+          if (tempCtx) {
+            tempCtx.font = font
+            textWidth = tempCtx.measureText(selection.label).width
+          }
+          const labelMinX = centerX - textWidth / 2 - padding
+          const labelMaxX = centerX + textWidth / 2 + padding
+          const labelMinY = labelY - textHeight - padding
+          const labelMaxY = labelY + padding
+          minX = Math.min(minX, labelMinX)
+          minY = Math.min(minY, labelMinY)
+          maxX = Math.max(maxX, labelMaxX)
+          maxY = Math.max(maxY, labelMaxY)
+        }
+      }
+    })
+
+    // Add margin
+    const margin = 16
+    minX = Math.floor(minX - margin)
+    minY = Math.floor(minY - margin)
+    maxX = Math.ceil(maxX + margin)
+    maxY = Math.ceil(maxY + margin)
+    const width = maxX - minX
+    const height = maxY - minY
+
+    // 2. Create a temporary canvas with the new size
+    const tempCanvas = document.createElement("canvas")
+    const tempCtx = tempCanvas.getContext("2d")
+    if (!tempCtx) return
+    tempCanvas.width = width
+    tempCanvas.height = height
+
+    // Fill with white background
+    tempCtx.fillStyle = "white"
+    tempCtx.fillRect(0, 0, width, height)
+
+    // 3. Draw the original image shifted
+    tempCtx.drawImage(imageElement, -minX, -minY)
+
+    // 4. Draw all completed selections and labels shifted
+    selections.forEach((selection) => {
+      if (selection.points.length > 0 && selection.isComplete) {
+        tempCtx.save()
+        tempCtx.strokeStyle = selection.color
+        tempCtx.fillStyle = selection.color + "20"
+        tempCtx.lineWidth = 2
+        tempCtx.beginPath()
+        tempCtx.moveTo(selection.points[0].x - minX, selection.points[0].y - minY)
+        selection.points.forEach((point) => {
+          tempCtx.lineTo(point.x - minX, point.y - minY)
+        })
+        tempCtx.closePath()
+        tempCtx.fill()
+        tempCtx.stroke()
+        // Draw label
+        if (selection.label) {
+          const centerX = selection.points.reduce((sum, p) => sum + p.x, 0) / selection.points.length
+          const minYPoly = Math.min(...selection.points.map((p) => p.y))
+          const labelY = minYPoly - 20
+          tempCtx.font = "12px Arial"
+          tempCtx.textAlign = "center"
+          const textMetrics = tempCtx.measureText(selection.label)
+          const textWidth = textMetrics.width
+          const textHeight = 12
+          const padding = 4
+          // Draw background with segment color
+          tempCtx.fillStyle = selection.color
+          tempCtx.fillRect(
+            centerX - textWidth / 2 - padding - minX,
+            labelY - textHeight - padding - minY,
+            textWidth + padding * 2,
+            textHeight + padding * 2,
+          )
+          // Draw text in white for better contrast
+          tempCtx.fillStyle = "#fff"
+          tempCtx.fillText(selection.label, centerX - minX, labelY - padding - minY)
+        }
+        tempCtx.restore()
+      }
+    })
+
+    // 5. Create download link
+    const link = document.createElement("a")
+    link.download = "segmented-image.png"
+    link.href = tempCanvas.toDataURL("image/png")
+    link.click()
+  }, [imageElement, selections])
+
+  const startEditingLabel = useCallback((selection: PolygonSelection) => {
+    setEditingLabelId(selection.id)
+    setEditingLabelValue(selection.label)
+  }, [])
+
+  const saveEditingLabel = useCallback(() => {
+    if (editingLabelId && editingLabelValue.trim()) {
+      setSelections((prev) =>
+        prev.map((selection) =>
+          selection.id === editingLabelId ? { ...selection, label: editingLabelValue.trim() } : selection,
+        ),
+      )
+    }
+    setEditingLabelId(null)
+    setEditingLabelValue("")
+  }, [editingLabelId, editingLabelValue])
+
+  const cancelEditingLabel = useCallback(() => {
+    setEditingLabelId(null)
+    setEditingLabelValue("")
+  }, [])
+
+  // Handle window resize
+  const handleResize = useCallback(() => {
+    setupCanvas()
+  }, [setupCanvas])
+
+  // Setup canvas on mount and resize
+  useEffect(() => {
+    setupCanvas()
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [setupCanvas, handleResize])
+
+  // Redraw when canvas size changes
+  useEffect(() => {
+    if (image && canvasSize.width && canvasSize.height) {
+      fitImageToCanvas()
+    }
+  }, [canvasSize, fitImageToCanvas])
+
+  // Effect to redraw canvas
+  useEffect(() => {
+    draw()
+  }, [draw])
+
+  useEffect(() => {
+    setZoomInput(Math.round(zoom * 100).toString())
+  }, [zoom])
+
+  const handleMouseLeave = useCallback(() => {
+    // Stop all dragging operations when mouse leaves canvas
+    setIsPanning(false)
+    setIsDraggingNode(false)
+    setEditingNodeIndex(null)
+    setHoveredAddButton(null)
+    wasDraggingRef.current = false
+  }, [])
+
+  // Load image when image prop changes
+  useEffect(() => {
+    if (image) {
+      const img = new Image()
+      img.onload = () => {
+        setImageElement(img)
+        fitImageToCanvas(img)
+      }
+      img.src = image
+    } else {
+      setImageElement(null)
     }
   }, [image])
 
-  // Add image load event listener
+  // Debug function to show polygon coordinates
+  const debugShowCoordinates = useCallback(() => {
+    console.log('Current Polygon Selections:')
+    selections.forEach((selection, index) => {
+      console.log(`\nPolygon ${index + 1} (${selection.label}):`)
+      console.log('Points:', selection.points.map(p => `(${p.x.toFixed(2)}, ${p.y.toFixed(2)})`).join(', '))
+    })
+  }, [selections])
+
+  // Expose debug function to window
   useEffect(() => {
-    const handleImageLoad = () => {
-      if (imageRef.current) {
-        setImageDimensions({
-          width: imageRef.current.naturalWidth,
-          height: imageRef.current.naturalHeight,
-        })
-      }
-    }
+    // @ts-ignore
+    window.debugShowCoordinates = debugShowCoordinates
+  }, [debugShowCoordinates])
 
-    const imgElement = imageRef.current
-    if (imgElement) {
-      imgElement.addEventListener("load", handleImageLoad)
-
-      // If the image is already loaded, update dimensions
-      if (imgElement.complete) {
-        handleImageLoad()
-      }
-    }
-
-    return () => {
-      if (imgElement) {
-        imgElement.removeEventListener("load", handleImageLoad)
-      }
-    }
-  }, [imageRef.current])
-
-  // Update image display dimensions and position on resize or zoom change
-  useEffect(() => {
-    const updateImageDisplayInfo = () => {
-      if (!imageRef.current || !imageContainerRef.current) return
-
-      const imgRect = imageRef.current.getBoundingClientRect()
-      const containerRect = imageContainerRef.current.getBoundingClientRect()
-
-      setImageDisplayDimensions({
-        width: imgRect.width,
-        height: imgRect.height,
-      })
-
-      // Calculate image position relative to container
-      setImagePosition({
-        x: imgRect.left - containerRect.left,
-        y: imgRect.top - containerRect.top,
+  // Excel report generation
+  const downloadExcelReport = useCallback(() => {
+    if (!imageElement) return
+    const width = imageElement.width
+    const regionCount = 10
+    const regionWidth = width / regionCount
+    const mmRanges = [
+      "0-300", "300-600", "600-900", "900-1200", "1200-1500", "1500-1800", "1800-2100", "2100-2400", "2400-2700", "2700-3000"
+    ]
+    const rows = []
+    for (let i = 0; i < regionCount; ++i) {
+      // Find all segment names that have at least one point in this region
+      const xStart = i * regionWidth
+      const xEnd = (i + 1) * regionWidth
+      const regionDefects = selections
+        .filter(sel => sel.isComplete && sel.points.some(p => p.x >= xStart && p.x < xEnd))
+        .map(sel => sel.label)
+      rows.push({
+        "Номер сварного соединения по журналу сварки": "<Напишите здесь>",
+        "Диаметр и толщина стенки трубы, мм": "<Напишите здесь>",
+        "Шифр бригады или клеймо сварщика": "<Напишите здесь>",
+        "Номер участка контроля (координаты мерного пояса)": mmRanges[i],
+        "Чувствительность контроля, мм": 0.5,
+        "Описание выявленных дефектов": regionDefects.join(", "),
+        "Координаты недопустимых дефектов по периметру шва": "<Напишите здесь>",
+        "Заключение (годен, ремонт, вырезать)": "<Напишите здесь>",
+        "Примечания": "<Напишите здесь>"
       })
     }
-
-    // Initial update
-    updateImageDisplayInfo()
-
-    // Set up resize observer to detect changes in image size
-    const resizeObserver = new ResizeObserver(updateImageDisplayInfo)
-
-    if (imageRef.current) {
-      resizeObserver.observe(imageRef.current)
-    }
-
-    if (imageContainerRef.current) {
-      resizeObserver.observe(imageContainerRef.current)
-    }
-
-    // Update when zoom or position changes
-    window.addEventListener("resize", updateImageDisplayInfo)
-
-    return () => {
-      resizeObserver.disconnect()
-      window.removeEventListener("resize", updateImageDisplayInfo)
-    }
-  }, [zoom, position])
-
-  // Add a new state to history
-  const addToHistory = (newSegments: PredictionResult[]) => {
-    // If we're not at the end of the history, truncate it
-    const newHistory = history.slice(0, historyIndex + 1)
-    newHistory.push([...newSegments])
-    setHistory(newHistory)
-    setHistoryIndex(newHistory.length - 1)
-  }
-
-  // Undo function
-  const handleUndo = () => {
-    if (historyIndex > 0) {
-      const newIndex = historyIndex - 1
-      setHistoryIndex(newIndex)
-      if (onSegmentsChange) {
-        onSegmentsChange([...history[newIndex]])
-      }
-    }
-  }
-
-  // Redo function
-  const handleRedo = () => {
-    if (historyIndex < history.length - 1) {
-      const newIndex = historyIndex + 1
-      setHistoryIndex(newIndex)
-      if (onSegmentsChange) {
-        onSegmentsChange([...history[newIndex]])
-      }
-    }
-  }
-
-  // Zoom from window center (for button zooming)
-  const zoomFromWindowCenter = (zoomDelta: number) => {
-    if (!imageContainerRef.current || !imageWrapperRef.current) return
-
-    // Get container bounds
-    const containerRect = imageContainerRef.current.getBoundingClientRect()
-    const wrapperRect = imageWrapperRef.current.getBoundingClientRect()
-
-    // Calculate the center of the container (window)
-    const containerCenterX = containerRect.width / 2
-    const containerCenterY = containerRect.height / 2
-
-    // Calculate the center of the image wrapper
-    const wrapperCenterX = wrapperRect.left + wrapperRect.width / 2 - containerRect.left
-    const wrapperCenterY = wrapperRect.top + wrapperRect.height / 2 - containerRect.top
-
-    // Calculate container center position relative to the center of the image wrapper
-    const relativeX = containerCenterX - wrapperCenterX
-    const relativeY = containerCenterY - wrapperCenterY
-
-    // Calculate new zoom level with limits
-    const zoomFactor = zoomDelta > 0 ? 1.2 : 1/1.2
-    const newZoom = Math.min(Math.max(zoom * zoomFactor, 0.5), 30)
-
-    // Calculate how the position should change to keep the window center over the same image point
-    const newPosition = {
-      x: position.x - relativeX * (newZoom/zoom - 1),
-      y: position.y - relativeY * (newZoom/zoom - 1),
-    }
-
-    // Update state
-    setZoom(newZoom)
-    setPosition(newPosition)
-  }
-
-  const handleZoomIn = () => zoomFromWindowCenter(1)
-  const handleZoomOut = () => zoomFromWindowCenter(-1)
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 0) { // Left click
-      setIsDragging(true)
-      setDragStart({
-        x: e.clientX - position.x,
-        y: e.clientY - position.y,
-      })
-    }
-  }
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (isEditMode) {
-      // Handle segment dragging or resizing
-      if (isDraggingSegment && selectedSegment !== null && results) {
-        const imageCoords = screenToImageCoords(e.clientX, e.clientY)
-        const mouseX = imageCoords.x
-        const mouseY = imageCoords.y
-
-        const updatedSegments = results.map((segment: PredictionResult) => {
-          if (segment.id === selectedSegment) {
-            let updatedSegment = { ...segment }
-
-            if (resizeHandle && resizeStartData) {
-              // Improved resizing logic with better handle behavior
-              const {
-                x0: startX0,
-                y0: startY0,
-                x1: startX1,
-                y1: startY1,
-                mouseX: startMouseX,
-                mouseY: startMouseY,
-              } = resizeStartData
-
-              // Calculate mouse movement deltas
-              const deltaX = mouseX - startMouseX
-              const deltaY = mouseY - startMouseY
-
-              // Use floating point for smooth resizing
-              let newX0 = startX0
-              let newY0 = startY0
-              let newX1 = startX1
-              let newY1 = startY1
-
-              // Apply changes based on which handle is being dragged
-              if (resizeHandle.includes("e")) {
-                newX1 = startX1 + deltaX
-              }
-              if (resizeHandle.includes("w")) {
-                newX0 = startX0 + deltaX
-              }
-              if (resizeHandle.includes("s")) {
-                newY1 = startY1 + deltaY
-              }
-              if (resizeHandle.includes("n")) {
-                newY0 = startY0 + deltaY
-              }
-
-              // Create the updated segment
-              updatedSegment = {
-                ...segment,
-                x1: newX1,
-                y1: newY1,
-              }
-            } else {
-              // Moving logic
-              const width = segment.x1 - segment.x1
-              const height = segment.y1 - segment.y1
-              // Use floating point for smooth movement
-              let newX0 = mouseX - dragOffset.x
-              let newY0 = mouseY - dragOffset.y
-
-              // Clamp position so the segment stays fully inside the image, but do not resize
-              if (newX0 < 0) newX0 = 0
-              if (newX0 + width > imageDimensions.width) newX0 = imageDimensions.width - width
-              if (newY0 < 0) newY0 = 0
-              if (newY0 + height > imageDimensions.height) newY0 = imageDimensions.height - height
-
-              updatedSegment = {
-                ...segment,
-                x1: newX0 + width,
-                y1: newY0 + height,
-              }
-            }
-
-            // Constrain to image boundaries
-            return constrainSegmentToImage(updatedSegment)
-          }
-          return segment
-        })
-
-        if (onSegmentsChange) {
-          onSegmentsChange(updatedSegments)
-          // Don't add to history during drag/resize - we'll add on mouse up
-        }
-        return
-      }
-    }
-
-    // Regular image dragging
-    if (!isDragging) return
-
-    const newX = e.clientX - dragStart.x
-    const newY = e.clientY - dragStart.y
-
-    setPosition({
-      x: newX,
-      y: newY,
-    })
-  }
-
-  const handleMouseUp = () => {
-    // If we were dragging or resizing a segment, add the current state to history
-    if (isDraggingSegment && results) {
-      addToHistory([...results])
-    }
-
-    setIsDragging(false)
-    setIsDraggingSegment(false)
-    setResizeHandle(null)
-    setResizeStartData(null)
-  }
-
-  const handleMouseEnter = () => {
-    setIsHovering(true)
-  }
-
-  const handleMouseLeave = () => {
-    setIsHovering(false)
-    setIsDragging(false)
-  }
-
-  // Handle container click to deselect segment when clicking outside
-  const handleContainerClick = (e: React.MouseEvent) => {
-    if (isEditMode) {
-      // Check if the click target is the container or image wrapper
-      const isClickOnContainer = e.target === e.currentTarget || 
-        e.target === imageWrapperRef.current ||
-        e.target === imageRef.current;
-        
-      if (isClickOnContainer) {
-        setSelectedSegment(null);
-      }
-    }
-  }
-
-  // Handle segment selection
-  const handleSegmentClick = (e: React.MouseEvent, segmentId: number) => {
-    if (!isEditMode) return
-    e.stopPropagation()
-    setSelectedSegment(segmentId)
-  }
-
-  // Handle segment drag start
-  const handleSegmentDragStart = (e: React.MouseEvent, segmentId: number) => {
-    if (!isEditMode) return
-    e.stopPropagation()
-
-    setSelectedSegment(segmentId)
-    setIsDraggingSegment(true)
-
-    const segment = results?.find((s: PredictionResult) => s.id === segmentId)
-    if (!segment) return
-
-    // Get mouse position in image coordinates
-    const imageCoords = screenToImageCoords(e.clientX, e.clientY)
-
-    setDragOffset({
-      x: imageCoords.x - segment.x1,
-      y: imageCoords.y - segment.y1,
-    })
-  }
-
-  // Convert between screen coordinates and image coordinates
-  const screenToImageCoords = (screenX: number, screenY: number) => {
-    if (!imageRef.current || !imageContainerRef.current) {
-      return { x: 0, y: 0 }
-    }
-
-    const containerRect = imageContainerRef.current.getBoundingClientRect()
-    const imgRect = imageRef.current.getBoundingClientRect()
-
-    // Calculate position relative to the container with high precision
-    const relativeX = screenX - containerRect.left - position.x
-    const relativeY = screenY - containerRect.top - position.y
-
-    // Account for zoom with maximum precision
-    const zoomedX = relativeX / zoom
-    const zoomedY = relativeY / zoom
-
-    // Calculate position relative to the image element
-    const imgCenterX = imgRect.width / (2 * zoom)
-    const imgCenterY = imgRect.height / (2 * zoom)
-
-    // Calculate the offset from the center of the image
-    const offsetX = zoomedX - imgCenterX
-    const offsetY = zoomedY - imgCenterY
-
-    // Convert to image natural coordinates with maximum precision
-    const scaleX = (imageDimensions.width / imgRect.width) * zoom
-    const scaleY = (imageDimensions.height / imgRect.height) * zoom
-
-    return {
-      x: imageDimensions.width / 2 + offsetX * scaleX,
-      y: imageDimensions.height / 2 + offsetY * scaleY,
-    }
-  }
-
-  // Ensure segment stays within image boundaries
-  const constrainSegmentToImage = (segment: PredictionResult): PredictionResult => {
-    if (imageDimensions.width === 0 || imageDimensions.height === 0) {
-      return segment
-    }
-
-    let { x1, y1 } = segment
-
-    // Ensure minimum size (20px in image coordinates)
-    const minSize = 20
-
-    // Constrain to image boundaries while maintaining minimum size
-    x1 = Math.max(minSize, Math.min(x1, imageDimensions.width))
-    y1 = Math.max(minSize, Math.min(y1, imageDimensions.height))
-
-    // Ensure minimum size is maintained
-    if (x1 - segment.x1 < minSize) {
-      if (x1 >= imageDimensions.width) {
-        x1 = imageDimensions.width - minSize
-      } else {
-        x1 = segment.x1 + minSize
-      }
-    }
-    if (y1 - segment.y1 < minSize) {
-      if (y1 >= imageDimensions.height) {
-        y1 = imageDimensions.height - minSize
-      } else {
-        y1 = segment.y1 + minSize
-      }
-    }
-
-    return { ...segment, x1, y1 }
-  }
-
-  // Handle image download with defect markers
-  const handleSaveImage = () => {
-    if (!image || !results) return
-
-    // Create a canvas element to draw the image and defect markers
-    const canvas = document.createElement("canvas")
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-
-    // Create a new image object to load the source image
-    const img = new Image()
-    img.crossOrigin = "anonymous" // Avoid CORS issues
-
-    img.onload = () => {
-      // Constants for padding and label height
-      const PADDING = 20
-      const LABEL_HEIGHT = 25
-      const LABEL_PADDING = 5
-      const FONT_SIZE = 14
-
-      // Calculate the extra space needed at the top, right, bottom, and left
-      let topExtension = PADDING
-      let rightExtension = PADDING
-      const bottomExtension = PADDING
-      let leftExtension = PADDING
-
-      // Check each segment to see if its label extends beyond the image boundaries
-      results.forEach((segment: PredictionResult) => {
-        const x = segment.x1
-        const y = segment.y1
-
-        // Set font to measure text width
-        ctx.font = `bold ${FONT_SIZE}px Arial`
-        const labelText = segment.label
-        const labelWidth = ctx.measureText(labelText).width + LABEL_PADDING * 2
-
-        // Check if label extends beyond top
-        const labelTop = y - LABEL_HEIGHT
-        if (labelTop < topExtension) {
-          topExtension = Math.max(PADDING, Math.abs(labelTop) + PADDING)
-        }
-
-        // Check if label extends beyond left
-        if (x < leftExtension) {
-          leftExtension = Math.max(PADDING, Math.abs(x) + PADDING)
-        }
-
-        // Check if label extends beyond right
-        const labelRight = x + labelWidth
-        if (labelRight > img.width + rightExtension) {
-          rightExtension = Math.max(PADDING, labelRight - img.width + PADDING)
-        }
-      })
-
-      // Set canvas dimensions with extensions
-      canvas.width = img.width + leftExtension + rightExtension
-      canvas.height = img.height + topExtension + bottomExtension
-
-      // Fill the canvas with white background
-      ctx.fillStyle = "white"
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-      // Draw the original image with offset to account for extensions
-      ctx.drawImage(img, leftExtension, topExtension, img.width, img.height)
-
-      // Draw border around the original image area
-      ctx.strokeStyle = "#e2e8f0" // Light gray border
-      ctx.lineWidth = 1
-      ctx.strokeRect(leftExtension, topExtension, img.width, img.height)
-
-      // Draw the defect markers
-      ctx.strokeStyle = "red"
-      ctx.fillStyle = "rgba(255, 0, 0, 0.2)"
-      ctx.lineWidth = 2
-
-      // Draw each defect marker
-      results.forEach((segment: PredictionResult) => {
-        const x = segment.x1 + leftExtension
-        const y = segment.y1 + topExtension
-        const width = segment.x1 - segment.x1
-        const height = segment.y1 - segment.y1
-
-        // Draw rectangle
-        ctx.beginPath()
-        ctx.rect(x, y, width, height)
-        ctx.fill()
-        ctx.stroke()
-
-        // Prepare for drawing label
-        const labelText = segment.label
-        ctx.font = `bold ${FONT_SIZE}px Arial`
-        const textMetrics = ctx.measureText(labelText)
-        const labelWidth = textMetrics.width + LABEL_PADDING * 2
-
-        // Calculate text baseline for better vertical alignment
-        // The actual height of the text is approximately 70% of FONT_SIZE
-        const textHeight = FONT_SIZE * 0.7
-        const verticalOffset = (LABEL_HEIGHT - textHeight) / 2
-
-        // Draw label background with proper dimensions
-        ctx.fillStyle = "red"
-        ctx.beginPath()
-        ctx.rect(x, y - LABEL_HEIGHT, labelWidth, LABEL_HEIGHT)
-        ctx.fill()
-
-        // Draw label text with proper vertical alignment
-        ctx.fillStyle = "white"
-        ctx.fillText(labelText, x + LABEL_PADDING, y - LABEL_HEIGHT + LABEL_HEIGHT / 2 + textHeight / 2)
-
-        // Reset fill style for next rectangle
-        ctx.fillStyle = "rgba(255, 0, 0, 0.2)"
-      })
-
-      // Convert canvas to data URL
-      const dataUrl = canvas.toDataURL("image/png")
-
-      // Create download link
-      const link = document.createElement("a")
-      link.href = dataUrl
-      link.download = "steel-pipe-analysis-with-defects.png"
-
-      // Trigger download
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-    }
-
-    // Set the source of the image
-    img.src = image
-  }
-
-  // Update history when segments change (except during drag/resize)
-  useEffect(() => {
-    if (results && !isDraggingSegment) {
-      // Only add to history if the segments have actually changed
-      if (history.length === 0 || JSON.stringify(history[historyIndex]) !== JSON.stringify(results)) {
-        addToHistory([...results]);
-      }
-    }
-  }, [results]);
-
-  // Add event listeners for mouse up outside the component
-  useEffect(() => {
-    const handleGlobalMouseUp = () => {
-      if (isDraggingSegment && results) {
-        addToHistory([...results])
-      }
-
-      setIsDragging(false)
-      setIsDraggingSegment(false)
-      setResizeHandle(null)
-      setResizeStartData(null)
-      // Remove scroll restore
-    }
-
-    window.addEventListener("mouseup", handleGlobalMouseUp)
-
-    return () => {
-      window.removeEventListener("mouseup", handleGlobalMouseUp)
-    }
-  }, [isDraggingSegment, results])
-
-  // Add effect to deselect when edit mode is disabled
-  useEffect(() => {
-    if (!isEditMode) {
-      setSelectedSegment(null)
-    }
-  }, [isEditMode])
-
-  // Handle label edit start
-  const handleLabelDoubleClick = (e: React.MouseEvent, segmentId: number, currentLabel: string) => {
-    if (!isEditMode) return
-    e.stopPropagation()
-    setEditingLabel(segmentId)
-    setEditingLabelText(currentLabel)
-  }
-
-  // Handle label edit save
-  const handleLabelSave = (segmentId: number) => {
-    if (!results || editingLabel === null) return
-
-    const updatedSegments = results.map((segment: PredictionResult) => {
-      if (segment.id === segmentId) {
-        return { ...segment, label: editingLabelText }
-      }
-      return segment
-    })
-
-    if (onSegmentsChange) {
-      onSegmentsChange(updatedSegments)
-    }
-    setEditingLabel(null)
-  }
-
-  // Handle label edit cancel
-  const handleLabelKeyDown = (e: React.KeyboardEvent, segmentId: number) => {
-    if (e.key === 'Enter') {
-      handleLabelSave(segmentId)
-    } else if (e.key === 'Escape') {
-      setEditingLabel(null)
-    }
-  }
-
-  // Add touch event handlers for mobile drag support
-  const handleTouchStart = (e: React.TouchEvent) => {
-    e.preventDefault();
-    if (isEditMode && selectedSegment !== null) return
-    if (e.touches.length !== 1) return
-    setIsDragging(true)
-    setDragStart({
-      x: e.touches[0].clientX - position.x,
-      y: e.touches[0].clientY - position.y,
-    })
-  }
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    e.preventDefault();
-    if (!isDragging || e.touches.length !== 1) return
-    const newX = e.touches[0].clientX - dragStart.x
-    const newY = e.touches[0].clientY - dragStart.y
-    setPosition({
-      x: newX,
-      y: newY,
-    })
-  }
-
-  const handleTouchEnd = () => {
-    setIsDragging(false)
-  }
-
-  // Prevent page scroll on mobile when dragging
-  useEffect(() => {
-    const container = imageContainerRef.current;
-    if (!container) return;
-
-    const handleNativeTouchMove = (e: TouchEvent) => {
-      if (isDragging) {
-        e.preventDefault();
-      }
-    };
-    container.addEventListener("touchmove", handleNativeTouchMove, { passive: false });
-    return () => {
-      container.removeEventListener("touchmove", handleNativeTouchMove);
-    };
-  }, [isDragging]);
+    const ws = XLSX.utils.json_to_sheet(rows, {header: [
+      "Номер сварного соединения по журналу сварки",
+      "Диаметр и толщина стенки трубы, мм",
+      "Шифр бригады или клеймо сварщика",
+      "Номер участка контроля (координаты мерного пояса)",
+      "Чувствительность контроля, мм",
+      "Описание выявленных дефектов",
+      "Координаты недопустимых дефектов по периметру шва",
+      "Заключение (годен, ремонт, вырезать)",
+      "Примечания"
+    ]})
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Отчет")
+    XLSX.writeFile(wb, "report.xlsx")
+  }, [imageElement, selections])
 
   return (
-    <div className="max-w-5xl mx-auto">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Image display area */}
-        <div className="md:col-span-2 bg-white rounded-xl shadow-sm p-4 relative">
-          <div className="flex justify-between mb-4">
-            <div className="flex flex-wrap gap-2">
-              {onToggleEditMode && results && !isAnalyzing && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onToggleEditMode}
-                  className={isEditMode ? "bg-blue-100" : ""}
-                >
-                  {isEditMode ? <Check className="h-4 w-4 mr-1" /> : <Edit className="h-4 w-4 mr-1" />}
-                  {isEditMode ? t("done") : t("edit")}
-                </Button>
-              )}
-
-              {results && !isAnalyzing && (
-                <Button asChild variant="outline" size="sm">
-                  <a
-                    href="http://localhost:8000/download_report"
-                    download
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {t('download_report')} {/* <-- Используем функцию t() */}
-                  </a>
-                </Button>
-              )}
-
-              {isEditMode && (
-                <>
-                  <Button variant="outline" size="sm" onClick={handleUndo} disabled={historyIndex <= 0}>
-                    <Undo className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRedo}
-                    disabled={historyIndex >= history.length - 1}
-                  >
-                    <Redo className="h-4 w-4" />
-                  </Button>
-
-                  <Button variant="outline" size="sm" onClick={handleSaveImage}>
-                    <Download className="h-4 w-4 mr-1" /> {t("save")}
-                  </Button>
-
-                  {selectedSegment !== null && (
-                    <Button variant="outline" size="sm" onClick={() => onSegmentsChange(results.filter((s: PredictionResult) => s.id !== selectedSegment))} className="text-red-500">
-                      <Trash2 className="h-4 w-4 mr-1" /> {t("delete")}
-                    </Button>
-                  )}
-                </>
-              )}
+    <div className="flex h-screen bg-gray-100">
+      {/* Left Panel */}
+      <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
+        <CardHeader>
+          <CardTitle>{t("results.image.segmentation")}</CardTitle>
+          {inferenceTime !== undefined && (
+            <div className="text-sm text-gray-500 mt-1">
+              {t("results.inference.time", { time: inferenceTime.toFixed(2) })}
             </div>
-          </div>
-
-          <div
-            ref={imageContainerRef}
-            className={`relative w-full h-[380px] overflow-hidden rounded-lg bg-gray-100 select-none flex items-center justify-center ${
-              isDragging ? 'cursor-grabbing' : 'cursor-grab'
-            }`}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            onClick={handleContainerClick}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-          >
-            {isAnalyzing ? (
-              <Skeleton className="w-full h-full" />
-            ) : (
-              <div
-                className="relative flex items-center justify-center"
-                onMouseDown={handleMouseDown}
-                onMouseUp={handleMouseUp}
-                style={{
-                  transform: `translate(${position.x}px, ${position.y}px)`,
-                  transition: isDragging ? "none" : "transform 0.3s ease",
-                }}
-                ref={imageWrapperRef}
-              >
-                {/* Wrapper div with zoom applied */}
-                <div
-                  style={{
-                    transform: `scale(${zoom})`,
-                    transformOrigin: "center",
-                    transition: isDragging ? "none" : "transform 0.3s ease",
-                    position: "relative", // Important for positioning child elements
-                  }}
-                >
-                  <div className="relative">
-                    <img
-                      ref={imageRef}
-                      src={image || "/placeholder.svg"}
-                      alt="X-Ray image"
-                      className="max-h-[380px] object-contain"
-                      draggable="false" // Prevent default image dragging
-                    />
-
-                    {results && (
-                      <div
-                        ref={segmentsContainerRef}
-                        className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none"
-                        style={{
-                          width: imageRef.current?.width || 0,
-                          height: imageRef.current?.height || 0,
-                        }}
-                      >
-                        {results.map((segment: PredictionResult) => {
-                          const isSelected = selectedSegment === segment.id
-
-                          // Calculate position as percentage of image dimensions
-                          const percentX0 = (segment.x1 / imageDimensions.width) * 100
-                          const percentY0 = (segment.y1 / imageDimensions.height) * 100
-                          const percentX1 = (segment.x1 / imageDimensions.width) * 100
-                          const percentY1 = (segment.y1 / imageDimensions.height) * 100
-
-                          // For label: position above and outside the box, always centered horizontally
-                          const labelOffset = 8 // px above the box in image coordinates
-                          const labelTop = ((segment.y1 - labelOffset) / imageDimensions.height) * 100
-                          const labelLeft = (segment.x1 / imageDimensions.width) * 100
-
-                          return (
-                            <div
-                              key={segment.id}
-                              className={`absolute border-2 rounded-sm segment-box ${
-                                isSelected ? "border-blue-500 bg-blue-500/20" : "border-red-500 bg-red-500/20"
-                              }`}
-                              style={{
-                                left: `${percentX0}%`,
-                                top: `${percentY0}%`,
-                                width: `${percentX1 - percentX0}%`,
-                                height: `${percentY1 - percentY0}%`,
-                                pointerEvents: isEditMode ? "auto" : "none",
-                                cursor: isEditMode ? "move" : "default",
-                                borderWidth: `${1/zoom}px`,
-                                borderRadius: `${6/zoom}px`,
-                              }}
-                              onClick={(e) => handleSegmentClick(e, segment.id)}
-                              onMouseDown={(e) => handleSegmentDragStart(e, segment.id)}
-                            >
-                              {/* Label: position above and outside the box, always centered horizontally, with fixed gap regardless of zoom */}
-                              <div
-                                className="absolute"
-                                style={{
-                                  left: `50%`,
-                                  top: `100%`,
-                                  transform: `translateX(-50%) scale(${1/zoom})`,
-                                  transformOrigin: "top center",
-                                  width: 'max-content',
-                                  pointerEvents: 'auto',
-                                }}
-                              >
-                                {editingLabel === segment.id ? (
-                                  <input
-                                    type="text"
-                                    className="text-xs font-medium px-2 py-1 rounded bg-white border border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    value={editingLabelText}
-                                    onChange={(e) => setEditingLabelText(e.target.value)}
-                                    onKeyDown={(e) => handleLabelKeyDown(e, segment.id)}
-                                    onBlur={() => handleLabelSave(segment.id)}
-                                    autoFocus
-                                    onClick={(e) => e.stopPropagation()}
-                                  />
-                                ) : (
-                                  <span
-                                    className={`text-xs font-medium px-1 rounded whitespace-nowrap ${
-                                      isSelected ? "bg-blue-500" : "bg-red-500"
-                                    } text-white`}
-                                    onDoubleClick={(e) => handleLabelDoubleClick(e, segment.id, segment.label)}
-                                  >
-                                    {segment.label}
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Resize handles - only show for selected segment in edit mode */}
-                              {isEditMode && isSelected && (
-                                <>
-                                  {/* Corner handles */}
-                                  <div
-                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nwse-resize segment-handle"
-                                    style={{
-                                      left: `0%`,
-                                      top: `0%`,
-                                      transform: `translate(-50%, -50%) scale(${1/zoom})`,
-                                      transformOrigin: "center",
-                                    }}
-                                    onMouseDown={(e) => handleResizeStart(e, segment.id, "nw")}
-                                  />
-                                  <div
-                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nesw-resize segment-handle"
-                                    style={{
-                                      right: `0%`,
-                                      top: `0%`,
-                                      transform: `translate(50%, -50%) scale(${1/zoom})`,
-                                      transformOrigin: "center",
-                                    }}
-                                    onMouseDown={(e) => handleResizeStart(e, segment.id, "ne")}
-                                  />
-                                  <div
-                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nesw-resize"
-                                    style={{
-                                      left: `0%`,
-                                      bottom: `0%`,
-                                      transform: `translate(-50%, 50%) scale(${1/zoom})`,
-                                      transformOrigin: "center",
-                                    }}
-                                    onMouseDown={(e) => handleResizeStart(e, segment.id, "sw")}
-                                  />
-                                  <div
-                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nwse-resize"
-                                    style={{
-                                      right: `0%`,
-                                      bottom: `0%`,
-                                      transform: `translate(50%, 50%) scale(${1/zoom})`,
-                                      transformOrigin: "center",
-                                    }}
-                                    onMouseDown={(e) => handleResizeStart(e, segment.id, "se")}
-                                  />
-
-                                  {/* Edge handles */}
-                                  <div
-                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ew-resize"
-                                    style={{
-                                      left: `0%`,
-                                      top: `50%`,
-                                      transform: `translate(-50%, -50%) scale(${1/zoom})`,
-                                      transformOrigin: "center",
-                                    }}
-                                    onMouseDown={(e) => handleResizeStart(e, segment.id, "w")}
-                                  />
-                                  <div
-                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ew-resize"
-                                    style={{
-                                      right: `0%`,
-                                      top: `50%`,
-                                      transform: `translate(50%, -50%) scale(${1/zoom})`,
-                                      transformOrigin: "center",
-                                    }}
-                                    onMouseDown={(e) => handleResizeStart(e, segment.id, "e")}
-                                  />
-                                  <div
-                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ns-resize"
-                                    style={{
-                                      top: `0%`,
-                                      left: `50%`,
-                                      transform: `translate(-50%, -50%) scale(${1/zoom})`,
-                                      transformOrigin: "center",
-                                    }}
-                                    onMouseDown={(e) => handleResizeStart(e, segment.id, "n")}
-                                  />
-                                  <div
-                                    className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ns-resize"
-                                    style={{
-                                      bottom: `0%`,
-                                      left: `50%`,
-                                      transform: `translate(-50%, 50%) scale(${1/zoom})`,
-                                      transformOrigin: "center",
-                                    }}
-                                    onMouseDown={(e) => handleResizeStart(e, segment.id, "s")}
-                                  />
-                                </>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Analysis results area */}
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <h3 className="text-lg font-semibold mb-4">{t("analysis.results")}</h3>
-
-          {isAnalyzing ? (
-            <div className="space-y-4">
-              <div className="flex items-center">
-                <RefreshCw className="animate-spin mr-2 h-4 w-4 text-blue-500" />
-                <span>{t("analyzing")}</span>
-              </div>
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-              <Skeleton className="h-20 w-full" />
-            </div>
-          ) : results ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
-              <div>
-                <p className="text-sm text-gray-500 mb-2">{t("detected.defects")}</p>
-                <ul className="space-y-3">
-                  {results.map((segment: PredictionResult) => (
-                    <motion.li
-                      key={segment.id}
-                      initial={{ x: -20, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      transition={{ delay: 0.1 * segment.id }}
-                      className={`flex justify-between p-2 rounded ${
-                        selectedSegment === segment.id ? "bg-blue-50 border border-blue-200" : "bg-gray-50"
-                      }`}
-                      onClick={() => isEditMode && setSelectedSegment(segment.id)}
-                      style={{ cursor: isEditMode ? "pointer" : "default" }}
-                    >
-                      <span>{segment.label}</span>
-                    </motion.li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="mt-8">
-                <Button onClick={onReset} variant="outline" className="w-full text-sm whitespace-normal py-2">
-                  {t("analyze.another")}
-                </Button>
-              </div>
-            </motion.div>
-          ) : (
-            <p className="text-gray-500">{t("no.results")}</p>
           )}
-        </div>
+        </CardHeader>
+
+        <CardContent className="flex-1 overflow-auto space-y-4">
+          {/* File Upload */}
+          <div>
+            <Button onClick={onReset} className="w-full" variant="outline">
+              <Upload className="w-4 h-4 mr-2" />
+              {t("results.upload.image")}
+            </Button>
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+          </div>
+
+          {image && (
+            <>
+              <Button onClick={downloadPNG} className="w-full mb-2" variant="outline">
+                <Save className="w-4 h-4 mr-2" />
+                {t("results.image.report")}
+              </Button>
+              <Button onClick={downloadExcelReport} className="w-full" variant="outline">
+                <Save className="w-4 h-4 mr-2" />
+                {t("results.excel.report")}
+              </Button>
+            </>
+          )}
+
+          <Separator />
+
+          {/* Tools */}
+          <div>
+            <h3 className="font-semibold mb-2">{t("results.tools")}</h3>
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                variant={tool === "pan" ? "default" : "outline"}
+                className={tool === "pan" ? "bg-blue-500 hover:bg-blue-600 text-white" : ""}
+                size="sm"
+                onClick={() => setTool("pan")}
+              >
+                <Move className="w-4 h-4" />
+              </Button>
+              <Button
+                variant={tool === "polygon" ? "default" : "outline"}
+                className={tool === "polygon" ? "bg-blue-500 hover:bg-blue-600 text-white" : ""}
+                size="sm"
+                onClick={() => setTool("polygon")}
+              >
+                <Polygon className="w-4 h-4" />
+              </Button>
+              <Button
+                variant={tool === "edit" ? "default" : "outline"}
+                className={tool === "edit" ? "bg-blue-500 hover:bg-blue-600 text-white" : ""}
+                size="sm"
+                onClick={() => setTool("edit")}
+              >
+                <Edit3 className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Zoom Controls */}
+          <div>
+            <h3 className="font-semibold mb-2">{t("results.zoom")}</h3>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={zoomOut}>
+                <ZoomOut className="w-4 h-4" />
+              </Button>
+              <div className="flex items-center gap-1">
+                <Input
+                  type="text"
+                  value={zoomInput}
+                  onChange={(e) => handleZoomInputChange(e.target.value)}
+                  className="w-16 h-8 text-center text-sm"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.currentTarget.blur()
+                    }
+                  }}
+                />
+                <span className="text-sm">%</span>
+              </div>
+              <Button size="sm" variant="outline" onClick={zoomIn}>
+                <ZoomIn className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => fitImageToCanvas()}>
+                {t("results.fit")}
+              </Button>
+            </div>
+          </div>
+
+          {/* Current Polygon */}
+          {currentSelection && (
+            <div>
+              <h3 className="font-semibold mb-2">{t("results.current.polygon")}</h3>
+              <div className="space-y-2">
+                <Select value={newLabel} onValueChange={setNewLabel}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t("results.select.segment")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SEGMENT_LABELS.map((label) => (
+                      <SelectItem key={label} value={label}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={completePolygon} disabled={!newLabel}>
+                    <Save className="w-4 h-4 mr-1" />
+                    {t("results.complete")}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={cancelPolygon}>
+                    {t("results.cancel")}
+                  </Button>
+                </div>
+                <p className="text-sm text-gray-600">{t("results.points")}: {currentSelection.points.length}</p>
+              </div>
+            </div>
+          )}
+
+          <Separator />
+
+          {/* Selections List */}
+          <div>
+            <h3 className="font-semibold mb-2">{t("results.selections")} ({selections.length})</h3>
+            <div className="space-y-2 max-h-60 overflow-auto">
+              {selections.map((selection) => (
+                <div
+                  key={selection.id}
+                  className={`p-2 border rounded cursor-pointer ${
+                    selectedSelectionId === selection.id ? "border-blue-500 bg-blue-50" : "border-gray-200"
+                  }`}
+                  onClick={() => setSelectedSelectionId(selectedSelectionId === selection.id ? null : selection.id)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 flex-1">
+                      <div className="w-3 h-3 rounded" style={{ backgroundColor: selection.color }} />
+                      {editingLabelId === selection.id ? (
+                        <div className="flex items-center gap-1 flex-1" onClick={(e) => e.stopPropagation()}>
+                          <Select value={editingLabelValue} onValueChange={setEditingLabelValue}>
+                            <SelectTrigger className="h-6 text-sm flex-1">
+                              <SelectValue placeholder={t("results.select.segment")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SEGMENT_LABELS.map((label) => (
+                                <SelectItem key={label} value={label}>{label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button size="sm" variant="ghost" onClick={saveEditingLabel} className="h-6 w-6 p-0" disabled={!editingLabelValue}>
+                            <Save className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span
+                          className="text-sm font-medium flex-1 cursor-text"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            startEditingLabel(selection)
+                          }}
+                        >
+                          {selection.label}
+                        </span>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        deleteSelection(selection.id)
+                      }}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">{selection.points.length} {t("results.points")}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </div>
+
+      {/* Main Canvas Area */}
+      <div ref={containerRef} className="flex-1 relative">
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 cursor-crosshair"
+          onClick={handleCanvasClick}
+          onContextMenu={handleContextMenu}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
+        />
+
+        {/* Instructions Overlay */}
+        {!image && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="text-center text-gray-500">
+              <Upload className="w-12 h-12 mx-auto mb-4" />
+              <p className="text-lg font-medium">{t("results.upload.image")}</p>
+              <p className="text-sm">Supports large images up to 30k×1k pixels</p>
+            </div>
+          </div>
+        )}
+
+        {/* Tool Instructions */}
+        {image && (
+          <div className="absolute top-4 right-4 bg-white p-3 rounded-lg shadow-lg pointer-events-none">
+            <div className="text-sm">
+              {tool === "pan" && t("results.pan.image")}
+              {tool === "polygon" && t("results.add.points")}
+              {tool === "edit" && selectedSelectionId && (
+                <div className="space-y-1">
+                  <div>• {t("results.add.nodes")}</div>
+                  <div>• {t("results.remove.nodes")}</div>
+                  <div>• {t("results.move.nodes")}</div>
+                </div>
+              )}
+              {tool === "edit" && !selectedSelectionId && t("results.select.polygon")}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
-}
+} 
