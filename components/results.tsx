@@ -759,76 +759,112 @@ export function Results({
   }, [pan])
 
   const downloadPNG = useCallback(() => {
-    const canvas = canvasRef.current
-    if (!canvas || !imageElement) return
+    if (!imageElement) return
 
-    // Create a temporary canvas with the original image dimensions
-    const tempCanvas = document.createElement("canvas")
-    const tempCtx = tempCanvas.getContext("2d")
-    if (!tempCtx) return
+    // 1. Calculate bounding box for image, polygons, and labels
+    let minX = 0, minY = 0, maxX = imageElement.width, maxY = imageElement.height
 
-    // Set canvas size to match original image
-    tempCanvas.width = imageElement.width
-    tempCanvas.height = imageElement.height
-
-    // Fill with white background
-    tempCtx.fillStyle = "white"
-    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height)
-
-    // Draw the original image at full size
-    tempCtx.drawImage(imageElement, 0, 0)
-
-    // Draw all completed selections on the full image
     selections.forEach((selection) => {
       if (selection.points.length > 0 && selection.isComplete) {
-        tempCtx.strokeStyle = selection.color
-        tempCtx.fillStyle = selection.color + "20"
-        tempCtx.lineWidth = 2
-
-        tempCtx.beginPath()
-        tempCtx.moveTo(selection.points[0].x, selection.points[0].y)
-        selection.points.forEach((point) => {
-          tempCtx.lineTo(point.x, point.y)
+        // Polygon points
+        selection.points.forEach((p) => {
+          minX = Math.min(minX, p.x)
+          minY = Math.min(minY, p.y)
+          maxX = Math.max(maxX, p.x)
+          maxY = Math.max(maxY, p.y)
         })
-        tempCtx.closePath()
-        tempCtx.fill()
-        tempCtx.stroke()
-
-        // Draw label
+        // Label rectangle
         if (selection.label) {
           const centerX = selection.points.reduce((sum, p) => sum + p.x, 0) / selection.points.length
-          const centerY = selection.points.reduce((sum, p) => sum + p.y, 0) / selection.points.length
-
-          // Find the topmost point to position label above the polygon
-          const minY = Math.min(...selection.points.map((p) => p.y))
-          const labelY = minY - 20 // Position label above the polygon
-
-          tempCtx.font = "12px Arial"
-          tempCtx.textAlign = "center"
-
-          // Measure text to get proper dimensions
-          const textMetrics = tempCtx.measureText(selection.label)
-          const textWidth = textMetrics.width
-          const textHeight = 12
-          const padding = 4
-
-          // Draw background with segment color
-          tempCtx.fillStyle = selection.color
-          tempCtx.fillRect(
-            centerX - textWidth / 2 - padding,
-            labelY - textHeight - padding,
-            textWidth + padding * 2,
-            textHeight + padding * 2,
-          )
-
-          // Draw text in white for better contrast
-          tempCtx.fillStyle = "#fff"
-          tempCtx.fillText(selection.label, centerX, labelY - padding)
+          const minYPoly = Math.min(...selection.points.map((p) => p.y))
+          const labelY = minYPoly - 20
+          // Estimate label size
+          const font = "12px Arial"
+          const tempCanvas = document.createElement("canvas")
+          const tempCtx = tempCanvas.getContext("2d")
+          let textWidth = 0, textHeight = 12, padding = 4
+          if (tempCtx) {
+            tempCtx.font = font
+            textWidth = tempCtx.measureText(selection.label).width
+          }
+          const labelMinX = centerX - textWidth / 2 - padding
+          const labelMaxX = centerX + textWidth / 2 + padding
+          const labelMinY = labelY - textHeight - padding
+          const labelMaxY = labelY + padding
+          minX = Math.min(minX, labelMinX)
+          minY = Math.min(minY, labelMinY)
+          maxX = Math.max(maxX, labelMaxX)
+          maxY = Math.max(maxY, labelMaxY)
         }
       }
     })
 
-    // Create download link
+    // Add margin
+    const margin = 16
+    minX = Math.floor(minX - margin)
+    minY = Math.floor(minY - margin)
+    maxX = Math.ceil(maxX + margin)
+    maxY = Math.ceil(maxY + margin)
+    const width = maxX - minX
+    const height = maxY - minY
+
+    // 2. Create a temporary canvas with the new size
+    const tempCanvas = document.createElement("canvas")
+    const tempCtx = tempCanvas.getContext("2d")
+    if (!tempCtx) return
+    tempCanvas.width = width
+    tempCanvas.height = height
+
+    // Fill with white background
+    tempCtx.fillStyle = "white"
+    tempCtx.fillRect(0, 0, width, height)
+
+    // 3. Draw the original image shifted
+    tempCtx.drawImage(imageElement, -minX, -minY)
+
+    // 4. Draw all completed selections and labels shifted
+    selections.forEach((selection) => {
+      if (selection.points.length > 0 && selection.isComplete) {
+        tempCtx.save()
+        tempCtx.strokeStyle = selection.color
+        tempCtx.fillStyle = selection.color + "20"
+        tempCtx.lineWidth = 2
+        tempCtx.beginPath()
+        tempCtx.moveTo(selection.points[0].x - minX, selection.points[0].y - minY)
+        selection.points.forEach((point) => {
+          tempCtx.lineTo(point.x - minX, point.y - minY)
+        })
+        tempCtx.closePath()
+        tempCtx.fill()
+        tempCtx.stroke()
+        // Draw label
+        if (selection.label) {
+          const centerX = selection.points.reduce((sum, p) => sum + p.x, 0) / selection.points.length
+          const minYPoly = Math.min(...selection.points.map((p) => p.y))
+          const labelY = minYPoly - 20
+          tempCtx.font = "12px Arial"
+          tempCtx.textAlign = "center"
+          const textMetrics = tempCtx.measureText(selection.label)
+          const textWidth = textMetrics.width
+          const textHeight = 12
+          const padding = 4
+          // Draw background with segment color
+          tempCtx.fillStyle = selection.color
+          tempCtx.fillRect(
+            centerX - textWidth / 2 - padding - minX,
+            labelY - textHeight - padding - minY,
+            textWidth + padding * 2,
+            textHeight + padding * 2,
+          )
+          // Draw text in white for better contrast
+          tempCtx.fillStyle = "#fff"
+          tempCtx.fillText(selection.label, centerX - minX, labelY - padding - minY)
+        }
+        tempCtx.restore()
+      }
+    })
+
+    // 5. Create download link
     const link = document.createElement("a")
     link.download = "segmented-image.png"
     link.href = tempCanvas.toDataURL("image/png")
