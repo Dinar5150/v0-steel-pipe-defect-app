@@ -96,18 +96,19 @@ export default function Home() {
 
           <div className="container mx-auto px-4 py-12 relative z-10">
             <div className="flex flex-col items-center justify-between mb-8">
-              <motion.div
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="text-center mb-6"
-              >
-                <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">{t("upload.title")}</h1>
-                <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-                  {t("upload.subtitle")}
-                </p>
-              </motion.div>
-
+              {!image && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5 }}
+                  className="text-center mb-6"
+                >
+                  <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">{t("upload.title")}</h1>
+                  <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+                    {t("upload.subtitle")}
+                  </p>
+                </motion.div>
+              )}
               <div className="flex space-x-2">
                 <Button variant="outline" onClick={navigateToHistory} className="flex items-center">
                   <History className="mr-2 h-4 w-4" />
