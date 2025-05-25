@@ -47,7 +47,7 @@ const getAuthHeaders = (token: string | null) => {
 };
 
 // Helper function to decode mask text into segments
-const decodeMaskText = (maskText: string): PredictionResult[] => {
+export const decodeMaskText = (maskText: string): PredictionResult[] => {
   const segments: PredictionResult[] = [];
   const lines = maskText.split('\n');
   
