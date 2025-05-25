@@ -66,6 +66,7 @@ type TranslationKeys =
   | "results.pan.image"
   | "results.add.points"
   | "results.complete.polygon"
+  | "results.inference.time"
 
 type Translations = {
   [key in Language]: {
@@ -76,7 +77,7 @@ type Translations = {
 interface LanguageContextType {
   language: Language
   toggleLanguage: () => void
-  t: (key: TranslationKeys) => string
+  t: (key: TranslationKeys, params?: Record<string, string | number>) => string
 }
 
 const translations: Translations = {
@@ -141,7 +142,8 @@ const translations: Translations = {
     "results.select.polygon": "Select a polygon to edit",
     "results.pan.image": "Click and drag to pan the image",
     "results.add.points": "Click to add points, complete polygon in sidebar",
-    "results.complete.polygon": "Complete polygon in sidebar"
+    "results.complete.polygon": "Complete polygon in sidebar",
+    "results.inference.time": "Inference time: {time}s"
   },
   ru: {
     "analyze.another": "Проанализировать другое изображение",
@@ -204,7 +206,8 @@ const translations: Translations = {
     "results.select.polygon": "Выберите полигон для редактирования",
     "results.pan.image": "Нажмите и перетащите для перемещения изображения",
     "results.add.points": "Нажмите для добавления точек, завершите полигон в боковой панели",
-    "results.complete.polygon": "Завершите полигон в боковой панели"
+    "results.complete.polygon": "Завершите полигон в боковой панели",
+    "results.inference.time": "Время обработки: {time}с"
   }
 }
 
@@ -217,8 +220,14 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     setLanguage(prev => prev === "en" ? "ru" : "en")
   }
 
-  const t = (key: TranslationKeys): string => {
-    return translations[language][key]
+  const t = (key: TranslationKeys, params?: Record<string, string | number>): string => {
+    let text = translations[language][key]
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        text = text.replace(`{${key}}`, value.toString())
+      })
+    }
+    return text
   }
 
   return (

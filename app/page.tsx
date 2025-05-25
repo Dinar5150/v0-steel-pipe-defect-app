@@ -24,6 +24,7 @@ export default function Home() {
   const [results, setResults] = useState<PredictionResult[] | null>(null)
   const [showDebug, setShowDebug] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
+  const [inferenceTime, setInferenceTime] = useState<number | undefined>()
 
   // Check for a selected analysis from history
   useEffect(() => {
@@ -50,9 +51,10 @@ export default function Home() {
     };
   }, []);
 
-  const handleImageUpload = (imageUrl: string, predictions: PredictionResult[]) => {
+  const handleImageUpload = (imageUrl: string, predictions: PredictionResult[], time: number) => {
     setImage(imageUrl)
     setIsAnalyzing(true)
+    setInferenceTime(time)
 
     // Process predictions
     setResults(predictions)
@@ -64,6 +66,7 @@ export default function Home() {
     setImage(null)
     setResults(null)
     setIsEditMode(false)
+    setInferenceTime(undefined)
   }
 
   const navigateToHistory = () => {
@@ -129,6 +132,7 @@ export default function Home() {
                   isEditMode={isEditMode}
                   onToggleEditMode={toggleEditMode}
                   onSegmentsChange={handleSegmentsChange}
+                  inferenceTime={inferenceTime}
                 />
 
                 {showDebug && results && !isAnalyzing && (

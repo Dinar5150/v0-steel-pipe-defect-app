@@ -20,6 +20,7 @@ interface ResultsProps {
   isEditMode?: boolean
   onToggleEditMode?: () => void
   onSegmentsChange?: (segments: PredictionResult[]) => void
+  inferenceTime?: number
 }
 
 interface Point {
@@ -63,6 +64,7 @@ export function Results({
   isEditMode = false,
   onToggleEditMode,
   onSegmentsChange,
+  inferenceTime,
 }: ResultsProps) {
   const { t } = useLanguage()
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -1012,6 +1014,11 @@ export function Results({
       <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
         <CardHeader>
           <CardTitle>{t("results.image.segmentation")}</CardTitle>
+          {inferenceTime !== undefined && (
+            <div className="text-sm text-gray-500 mt-1">
+              {t("results.inference.time", { time: inferenceTime.toFixed(2) })}
+            </div>
+          )}
         </CardHeader>
 
         <CardContent className="flex-1 overflow-auto space-y-4">

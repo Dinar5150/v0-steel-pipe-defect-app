@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback } from "react"
+import { useCallback, useState, useEffect } from "react"
 import { useDropzone } from "react-dropzone"
 import { Button } from "@/components/ui/button"
 import { UploadIcon } from "lucide-react"
@@ -9,11 +9,28 @@ import { motion } from "framer-motion"
 import { analyzeImage } from "@/lib/api"
 
 interface UploadProps {
-  onImageUpload: (imageUrl: string, predictions: any) => void
+  onImageUpload: (imageUrl: string, predictions: any, time: number) => void
 }
 
 export function Upload({ onImageUpload }: UploadProps) {
   const { t } = useLanguage()
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [elapsedTime, setElapsedTime] = useState(0)
+
+  // Timer effect
+  useEffect(() => {
+    let timer: NodeJS.Timeout
+    if (isAnalyzing) {
+      timer = setInterval(() => {
+        setElapsedTime(prev => prev + 0.1)
+      }, 100)
+    } else {
+      setElapsedTime(0)
+    }
+    return () => {
+      if (timer) clearInterval(timer)
+    }
+  }, [isAnalyzing])
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
@@ -22,10 +39,16 @@ export function Upload({ onImageUpload }: UploadProps) {
         const imageUrl = URL.createObjectURL(file)
         
         try {
+          setIsAnalyzing(true)
+          const startTime = performance.now()
           const predictions = await analyzeImage(file)
-          onImageUpload(imageUrl, predictions)
+          const endTime = performance.now()
+          const inferenceTime = (endTime - startTime) / 1000 // Convert to seconds
+          setIsAnalyzing(false)
+          onImageUpload(imageUrl, predictions, inferenceTime)
         } catch (error) {
           console.error('Error analyzing image:', error)
+          setIsAnalyzing(false)
           // Здесь можно добавить обработку ошибок, например показать уведомление пользователю
         }
       }
@@ -79,6 +102,12 @@ export function Upload({ onImageUpload }: UploadProps) {
           </Button>
 
           <p className="mt-4 text-sm text-gray-400">{t("upload.formats")}</p>
+
+          {isAnalyzing && (
+            <div className="mt-4 text-sm text-blue-500">
+              {t("analyzing")} ({elapsedTime.toFixed(1)}s)
+            </div>
+          )}
         </div>
       </div>
     </motion.div>
